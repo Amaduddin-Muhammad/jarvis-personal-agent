@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+websockets
+psutil
+pyautogui
+langchain-nvidia-ai-endpoints
+langchain-core

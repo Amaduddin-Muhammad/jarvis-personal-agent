@@ -1,0 +1,20 @@
+{
+  "name": "jarvis-hud",
+  "version": "1.0.0",
+  "description": "JARVIS Personal AI Agent Hacker HUD overlay and background service",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [
+    "jarvis",
+    "ai-agent",
+    "hud",
+    "electron"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^32.0.0"
+  }
+}
