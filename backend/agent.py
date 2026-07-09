@@ -53,11 +53,10 @@ class JarvisOrchestrator:
         self.client = ChatNVIDIA(
             model="nvidia/nemotron-3-ultra-550b-a55b",
             api_key=api_key, 
-            temperature=0.8,
-            top_p=0.95,
-            max_tokens=4096,
-            reasoning_budget=4096,
-            chat_template_kwargs={"enable_thinking": True},
+            temperature=0.7,
+            top_p=0.9,
+            max_completion_tokens=2048,
+            chat_template_kwargs={"enable_thinking": False},
         )
         self.conversation_buffer = []
 
