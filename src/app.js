@@ -527,7 +527,7 @@ function handleLocalCommand(cmd) {
     currentLanguage = code;
     if (recognition) {
       recognition.lang = currentLanguage;
-      if (!isAudioMuted) {
+      if (audioMode !== 'MUTED') {
         recognition.stop(); // auto-restarts with new lang
       }
     }
