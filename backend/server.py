@@ -265,6 +265,21 @@ async def websocket_endpoint(websocket: WebSocket):
                 content = payload.get("content", "")
                 await execute_agent_loop(websocket, content, depth=0)
                 
+            elif p_type == "system_command":
+                command = payload.get("command")
+                if command == "wakeup":
+                    print("SYSTEM COMMAND: wakeup received. Activating window.", flush=True)
+                    import subprocess
+                    ps_cmd = (
+                        "$wshell = New-Object -ComObject wscript.shell; "
+                        "if ($wshell.AppActivate('JARVIS HUD Console')) { "
+                        "  Write-Host 'Window activated.' "
+                        "} else { "
+                        "  Write-Host 'Failed to find window.' "
+                        "}"
+                    )
+                    subprocess.Popen(["powershell", "-Command", ps_cmd], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
             elif p_type == "confirm_response":
                 confirm_id = payload.get("confirm_id")
                 approved = payload.get("approved", False)

@@ -246,6 +246,13 @@ function initSpeechRecognition() {
           renderUserMessage(speechText);
           speakText("Systems operational. I am listening, sir.");
           renderAgentResponse("Systems operational. I am listening, sir.", "Systems operational. I am listening, sir.");
+          
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+              type: 'system_command',
+              command: 'wakeup'
+            }));
+          }
         }
         return;
       }
