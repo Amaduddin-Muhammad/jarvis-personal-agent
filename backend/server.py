@@ -135,13 +135,14 @@ async def execute_agent_loop(websocket: WebSocket, user_text: str, depth: int = 
         await send_log(websocket, "WARN", "Agent recursion depth limit exceeded (3). Halting execution loop.")
         return
 
+    loop = asyncio.get_running_loop()
+
     # Helper function to send logs directly from agent to socket
     def socket_logger(msg_dict):
-        # We can't await inside a synchronous callback, so we create a task
-        asyncio.create_task(websocket.send_json(msg_dict))
+        # Schedule the coroutine to run on the main thread's event loop
+        asyncio.run_coroutine_threadsafe(websocket.send_json(msg_dict), loop)
 
     # Process query in executor thread
-    loop = asyncio.get_running_loop()
     parsed = await loop.run_in_executor(None, orchestrator.process_query, user_text, socket_logger)
     
     # Send display & speak output to client
