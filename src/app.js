@@ -1,18 +1,23 @@
 // HUD state variables
 let socket = null;
 let reconnectInterval = 3000;
-let audioMode = 'STANDBY'; // 'MUTED' | 'STANDBY' | 'AWAKE'
+let audioMode = 'AWAKE'; // 'MUTED' | 'AWAKE'
 let recognition = null;
 let speechSynth = window.speechSynthesis;
 let activeUtterance = null;
 let currentLanguage = 'en-US';
 
-// Waveform visualizer state
-let waveformCanvas = document.getElementById('waveform-canvas');
-let ctx = waveformCanvas.getContext('2d');
-let waveAnimationId = null;
-let wavePhase = 0;
-let waveActivity = 0.05; // Base idle noise
+// Voice engine advanced state
+let vadTimer = null;                   // VAD silence timer
+let interimTranscript = '';            // Currently accumulating interim text
+let isMicDucked = false;               // Mic paused while JARVIS speaks
+let recognitionRunning = false;        // Tracks if recognition is active
+let preferredVoice = null;             // Best TTS voice, resolved on load
+let voiceSpeed = 1.05;
+let voicePitch = 0.95;
+const VAD_SILENCE_MS = 1200;           // ms of silence before auto-send
+const FILLER_WORDS = new Set(['um','uh','hmm','hm','ah','er','uhh','umm','mm']);
+const MIN_CONFIDENCE = 0.40;           // Reject transcripts below this confidence
 
 // DOM Elements
 const btnMinimize = document.getElementById('btn-minimize');
@@ -26,6 +31,12 @@ const consoleInput = document.getElementById('console-input');
 const actionLogs = document.getElementById('action-logs');
 const logCountEl = document.getElementById('log-count');
 const memoryList = document.getElementById('memory-list');
+
+// Waveform canvas
+let waveformCanvas = document.getElementById('waveform-canvas');
+let ctx = waveformCanvas.getContext('2d');
+let waveAnimationId = null;
+let wavePhase = 0;
 
 // Vitals DOM elements
 const cpuPercent = document.getElementById('cpu-percent');
@@ -219,194 +230,332 @@ function speakText_fn(text) {
 
 
 // ==========================================
-// VOICE SYNTHESIS (TTS) & BARGE-IN
+// TTS — PREMIUM VOICE SELECTION
 // ==========================================
+function resolveBestVoice() {
+  const voices = speechSynth.getVoices();
+  if (!voices.length) return null;
+  // Priority order: best online voices first, fallback to offline
+  const priorities = [
+    v => v.name === 'Google UK English Male',
+    v => v.name === 'Google UK English Female',
+    v => v.name === 'Google US English',
+    v => v.name.includes('Google') && v.lang.startsWith('en'),
+    v => v.name === 'Microsoft David - English (United States)',
+    v => v.name === 'Microsoft Zira - English (United States)',
+    v => v.name.includes('Natural') && v.lang.startsWith('en'),
+    v => v.lang.startsWith('en') && !v.localService,
+    v => v.lang.startsWith('en'),
+  ];
+  for (const test of priorities) {
+    const found = voices.find(test);
+    if (found) return found;
+  }
+  return voices[0] || null;
+}
+
+speechSynth.onvoiceschanged = () => {
+  preferredVoice = resolveBestVoice();
+  if (preferredVoice) {
+    addSystemLog('OK', `TTS voice locked: ${preferredVoice.name}`);
+    document.getElementById('lang-status').innerText = preferredVoice.name.replace('Google ', '').replace('Microsoft ', '');
+  }
+};
+// Eagerly resolve in case voices already loaded
+preferredVoice = resolveBestVoice();
+
 function speakText(text) {
   if (audioMode === 'MUTED') return;
+  if (!text || !text.trim()) return;
 
-  // Interrupt previous speak
+  // Strip markdown code blocks for TTS
+  text = text.replace(/```[\s\S]*?```/g, ', code snippet,');
+  // Strip markdown bold/italic markers
+  text = text.replace(/[*_`#>]/g, '');
+  // Trim to 300 chars max for voice — keeps it snappy
+  if (text.length > 300) text = text.substring(0, 297) + '...';
+
   speechSynth.cancel();
-  waveActivity = 0.8; // Peak wave activity during speech
 
   activeUtterance = new SpeechSynthesisUtterance(text);
-  
-  // Set voice options
-  const voices = speechSynth.getVoices();
-  // Try to find a premium English voice or a default system voice
-  let voice = voices.find(v => v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Haruka') || v.name.includes('David') || v.name.includes('Zira'));
-  if (voice) {
-    activeUtterance.voice = voice;
-  }
-  activeUtterance.rate = 1.05; // Slightly faster for responsiveness
-  activeUtterance.pitch = 0.95; // Slightly lower for a calm baritone feel
+  activeUtterance.voice = preferredVoice || resolveBestVoice();
+  activeUtterance.rate  = voiceSpeed;
+  activeUtterance.pitch = voicePitch;
+  activeUtterance.lang  = currentLanguage;
+
+  activeUtterance.onstart = () => {
+    setAgentState('SPEAKING');
+    // Duck mic: pause recognition while speaking to prevent feedback
+    duckMic(true);
+    addSystemLog('SYS', 'JARVIS speaking — mic ducked.');
+  };
 
   activeUtterance.onend = () => {
-    waveActivity = (audioMode === 'MUTED') ? 0.05 : ((audioMode === 'STANDBY') ? 0.08 : 0.2); // Return to listening/idle noise
     activeUtterance = null;
+    setAgentState('IDLE');
+    // Unduck mic: resume recognition after speaking
+    duckMic(false);
+    addSystemLog('MIC', 'Speech complete — mic resumed.');
   };
 
   activeUtterance.onerror = (e) => {
-    console.error("Speech error", e);
-    waveActivity = (audioMode === 'MUTED') ? 0.05 : ((audioMode === 'STANDBY') ? 0.08 : 0.2);
+    console.error('TTS error:', e);
+    activeUtterance = null;
+    setAgentState('IDLE');
+    duckMic(false);
   };
 
   speechSynth.speak(activeUtterance);
 }
 
-// Make sure voices are loaded
-speechSynth.onvoiceschanged = () => {
-  console.log("Voices loaded:", speechSynth.getVoices().length);
-};
+// ==========================================
+// VOICE RECOGNITION — WORLD-CLASS ENGINE
+// ==========================================
 
-// ==========================================
-// VOICE RECOGNITION (STT)
-// ==========================================
+// Duck/unduck microphone during TTS playback
+function duckMic(shouldDuck) {
+  if (shouldDuck && !isMicDucked) {
+    isMicDucked = true;
+    if (recognition && recognitionRunning) {
+      try { recognition.abort(); } catch(e) {}
+      recognitionRunning = false;
+    }
+  } else if (!shouldDuck && isMicDucked) {
+    isMicDucked = false;
+    if (audioMode === 'AWAKE') {
+      // Short delay so mic doesn't catch the tail of TTS audio
+      setTimeout(startRecognition, 400);
+    }
+  }
+}
+
+function startRecognition() {
+  if (isMicDucked || audioMode !== 'AWAKE' || recognitionRunning) return;
+  try {
+    recognition.start();
+    recognitionRunning = true;
+  } catch(e) {
+    // already running — ignore
+  }
+}
+
+function stopRecognition() {
+  try { recognition.abort(); } catch(e) {}
+  recognitionRunning = false;
+}
+
 function setAudioMode(mode) {
   audioMode = mode;
-  
+
   if (mode === 'MUTED') {
     btnAudioToggle.innerText = 'MUTED';
     btnAudioToggle.className = 'hud-btn glow-btn btn-danger';
     speechSynth.cancel();
-    if (recognition) {
-      try { recognition.stop(); } catch(e) {}
-    }
+    stopRecognition();
+    isMicDucked = false;
+    clearInterimDisplay();
     document.getElementById('mic-status').innerText = '○ MUTED';
     document.getElementById('mic-status').className = 'value muted-color';
-    waveActivity = 0.05;
-    addSystemLog('SYS', 'Voice loops disarmed. Conversational flow offline.');
-  } else if (mode === 'STANDBY') {
-    btnAudioToggle.innerText = 'STANDBY';
-    btnAudioToggle.className = 'hud-btn glow-btn btn-warning';
-    document.getElementById('mic-status').innerText = '● STANDBY';
-    document.getElementById('mic-status').className = 'value warning-color';
-    waveActivity = 0.08;
-    if (recognition) {
-      try { recognition.start(); } catch(e) {}
-    }
-    addSystemLog('SYS', 'Voice loops in standby. Awaiting wake phrase "Wake up Jarvis".');
+    addSystemLog('SYS', 'Voice engine offline — all loops disarmed.');
   } else if (mode === 'AWAKE') {
-    btnAudioToggle.innerText = 'AWAKE';
+    btnAudioToggle.innerText = 'LISTENING';
     btnAudioToggle.className = 'hud-btn glow-btn btn-ok';
     document.getElementById('mic-status').innerText = '● LIVE';
     document.getElementById('mic-status').className = 'value live-color';
-    waveActivity = 0.25;
-    if (recognition) {
-      try { recognition.start(); } catch(e) {}
-    }
-    addSystemLog('SYS', 'Voice loops active. Conversational flow online.');
+    addSystemLog('MIC', 'Voice engine ACTIVE — always listening.');
+    startRecognition();
   }
 }
 
-function initSpeechRecognition() {
-  if (!('webkitSpeechRecognition' in window)) {
-    addSystemLog('ERROR', 'Webkit Speech Recognition is not supported in this environment.');
+// Show/hide the live interim transcript bar
+function showInterimDisplay(text) {
+  const el = document.getElementById('interim-transcript');
+  if (!el) return;
+  if (text) {
+    el.textContent = text;
+    el.classList.remove('hidden');
+  } else {
+    clearInterimDisplay();
+  }
+}
+
+function clearInterimDisplay() {
+  interimTranscript = '';
+  const el = document.getElementById('interim-transcript');
+  if (el) {
+    el.textContent = '';
+    el.classList.add('hidden');
+  }
+  if (vadTimer) {
+    clearTimeout(vadTimer);
+    vadTimer = null;
+  }
+}
+
+function commitTranscript(text) {
+  clearInterimDisplay();
+  if (!text || text.trim().length < 2) return;
+
+  // Barge-in: interrupt JARVIS if it is currently speaking
+  if (speechSynth.speaking) {
+    speechSynth.cancel();
+    duckMic(false);
+    addSystemLog('SYS', 'Barge-in: interrupting JARVIS speech.');
+  }
+
+  addSystemLog('MIC', `Committed: "${text}"`);
+  renderUserMessage(text);
+
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: 'user_message',
+      content: text,
+      is_voice: true
+    }));
+    setAgentState('THINKING');
+  } else {
+    addSystemLog('ERROR', 'WebSocket offline — cannot send voice query.');
+  }
+}
+
+function isFillerOnly(text) {
+  const words = text.toLowerCase().trim().split(/\s+/);
+  return words.every(w => FILLER_WORDS.has(w));
+}
+
+async function initSpeechRecognition() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    addSystemLog('ERROR', 'Web Speech API not supported in this browser.');
     return;
   }
 
-  recognition = new webkitSpeechRecognition();
-  recognition.continuous = true;
-  recognition.interimResults = false;
-  recognition.lang = currentLanguage;
+  // Request microphone access — needed for visualizer AND recognition
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    await initAudioVisualizer(micStream);
+    addSystemLog('OK', 'Microphone access granted.');
+  } catch (e) {
+    addSystemLog('WARN', `Microphone access error: ${e.message}`);
+  }
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.continuous      = true;    // Keep running permanently
+  recognition.interimResults  = true;    // Stream results as they come
+  recognition.maxAlternatives = 1;
+  recognition.lang            = currentLanguage;
 
   recognition.onstart = () => {
-    if (audioMode === 'STANDBY') {
-      document.getElementById('mic-status').innerText = '● STANDBY';
-      document.getElementById('mic-status').className = 'value warning-color';
-      waveActivity = 0.08;
-      addSystemLog('MIC', 'Microphone armed. Awaiting wake phrase "Wake up Jarvis".');
-    } else if (audioMode === 'AWAKE') {
-      document.getElementById('mic-status').innerText = '● LIVE';
-      document.getElementById('mic-status').className = 'value live-color';
-      waveActivity = 0.25;
-      addSystemLog('MIC', 'Microphone active. Voice loop open.');
-    }
+    recognitionRunning = true;
+    document.getElementById('mic-status').innerText = '● LIVE';
+    document.getElementById('mic-status').className = 'value live-color';
   };
 
   recognition.onresult = (event) => {
-    const result = event.results[event.results.length - 1];
-    if (result.isFinal) {
-      const speechText = result[0].transcript.trim();
-      const lowerText = speechText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
-      
-      if (audioMode === 'STANDBY') {
-        if (lowerText.includes('wake up jarvis') || lowerText.includes('wake up')) {
-          setAudioMode('AWAKE');
-          addSystemLog('SYS', 'Wake word detected. Initializing JARVIS systems...');
-          renderUserMessage(speechText);
-          speakText("Systems operational. I am listening, sir.");
-          renderAgentResponse("Systems operational. I am listening, sir.", "Systems operational. I am listening, sir.");
-          
-          if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-              type: 'system_command',
-              command: 'wakeup'
-            }));
-          }
+    let interimText  = '';
+    let finalText    = '';
+    let bestConfidence = 1.0;
+
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const res = event.results[i];
+      const transcript = res[0].transcript.trim();
+
+      if (res.isFinal) {
+        finalText     += transcript + ' ';
+        bestConfidence = res[0].confidence || 1.0;
+      } else {
+        interimText += transcript;
+      }
+    }
+
+    // ── Show interim transcript live ──
+    if (interimText) {
+      interimTranscript = interimText;
+      showInterimDisplay('▶ ' + interimText);
+
+      // VAD: reset the 1.2s silence timer on every new interim result
+      if (vadTimer) clearTimeout(vadTimer);
+      vadTimer = setTimeout(() => {
+        // Silence detected — commit whatever we have
+        const toSend = (interimTranscript || '').trim();
+        if (toSend.length >= 2 && !isFillerOnly(toSend)) {
+          commitTranscript(toSend);
+        } else {
+          clearInterimDisplay();
         }
+      }, VAD_SILENCE_MS);
+    }
+
+    // ── Process final results ──
+    if (finalText.trim()) {
+      const clean = finalText.trim();
+
+      // Cancel VAD timer — we have a firm final result
+      if (vadTimer) { clearTimeout(vadTimer); vadTimer = null; }
+      clearInterimDisplay();
+
+      // Confidence gate
+      if (bestConfidence < MIN_CONFIDENCE) {
+        addSystemLog('WARN', `Low confidence (${(bestConfidence*100).toFixed(0)}%) — discarded: "${clean}"`);
         return;
       }
-      
-      if (lowerText === 'go to sleep' || lowerText === 'sleep' || lowerText === 'stand down') {
-        setAudioMode('STANDBY');
-        addSystemLog('SYS', 'Sleep word detected. Standing down...');
-        renderUserMessage(speechText);
-        speakText("Standing down. I am in standby mode.");
-        renderAgentResponse("Standing down. I am in standby mode.", "Standing down. I am in standby mode.");
+
+      // Filler-word gate
+      if (isFillerOnly(clean)) {
+        addSystemLog('MIC', `Filler detected — ignored: "${clean}"`);
         return;
       }
-      
-      addSystemLog('MIC', `Transcribed: "${speechText}"`);
-      
-      // Interrupt check: if agent is currently speaking, barge-in!
-      if (speechSynth.speaking) {
-        speechSynth.cancel();
-        addSystemLog('SYS', 'Barge-in detected: interrupting playback.');
+
+      const lower = clean.toLowerCase();
+
+      // ── Built-in voice commands ──
+      if (lower.includes('go to sleep') || lower.includes('sleep mode') || lower.includes('stand down')) {
+        setAudioMode('MUTED');
+        speakText('Understood. Going silent.');
+        addSystemLog('SYS', 'Sleep command detected.');
+        return;
+      }
+      if ((lower.includes('wake up') || lower.includes('unmute') || lower.includes('listen')) && audioMode === 'MUTED') {
+        setAudioMode('AWAKE');
+        speakText("I'm back. What do you need?");
+        return;
       }
 
-      // Render transcription in Chat HUD
-      renderUserMessage(speechText);
-
-      // Send to server
-      if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-          type: 'user_message',
-          content: speechText,
-          is_voice: true
-        }));
-      }
+      commitTranscript(clean);
     }
   };
 
   recognition.onerror = (event) => {
+    recognitionRunning = false;
+    // 'no-speech' is normal — don't spam the log
     if (event.error === 'no-speech') return;
-    addSystemLog('WARN', `Speech recognition error: ${event.error}`);
+    // 'aborted' is triggered by our own duckMic() — ignore
+    if (event.error === 'aborted') return;
+    addSystemLog('WARN', `Voice recognition error: ${event.error}`);
   };
 
   recognition.onend = () => {
-    if (audioMode !== 'MUTED') {
-      try { recognition.start(); } catch (e) {}
+    recognitionRunning = false;
+    // Auto-restart unless muted or mic is ducked
+    if (audioMode === 'AWAKE' && !isMicDucked) {
+      setTimeout(startRecognition, 150); // brief pause to avoid instant-restart loop
     } else {
-      document.getElementById('mic-status').innerText = '○ MUTED';
-      document.getElementById('mic-status').className = 'value muted-color';
-      waveActivity = 0.05;
+      document.getElementById('mic-status').innerText = audioMode === 'MUTED' ? '○ MUTED' : '● STANDBY';
     }
   };
-  
-  // Try to start on initialization
-  try {
-    recognition.start();
-  } catch (e) {}
+
+  // Boot into AWAKE immediately
+  setAudioMode('AWAKE');
+  speakText('JARVIS online. Voice control active.');
 }
 
 initSpeechRecognition();
 
-// Cycle audio modes: STANDBY -> AWAKE -> MUTED -> STANDBY
+// Toggle: AWAKE ↔ MUTED
 btnAudioToggle.addEventListener('click', () => {
   if (audioMode === 'MUTED') {
-    setAudioMode('STANDBY');
-  } else if (audioMode === 'STANDBY') {
     setAudioMode('AWAKE');
+    speakText('Listening.');
   } else {
     setAudioMode('MUTED');
   }
@@ -602,29 +751,68 @@ consoleForm.addEventListener('submit', (e) => {
 });
 
 function handleLocalCommand(cmd) {
-  const parts = cmd.split(' ');
+  const parts = cmd.trim().split(/\s+/);
   const base = parts[0].toLowerCase();
-  
+
   if (base === '/clear') {
     chatMessages.innerHTML = '';
     addSystemLog('SYS', 'Console chat log purged.');
+
   } else if (base === '/help') {
-    renderAgentResponse("Available Local Commands:\n/clear - Purges conversational logs\n/mute - Toggles microphone state\n/lang [code] - Changes speech locale (e.g., en-US, es-ES)\n/vitals - Triggers force poll for vitals");
+    renderAgentResponse(
+      `## JARVIS Local Command Reference\n\n` +
+      `| Command | Description |\n|---|---|\n` +
+      `| \`/clear\` | Purge chat log |\n` +
+      `| \`/mute\` | Toggle mic LISTEN ↔ MUTE |\n` +
+      `| \`/lang [code]\` | Change speech locale (e.g. \`en-GB\`, \`ur-PK\`) |\n` +
+      `| \`/voice speed [0.5–2.0]\` | Set TTS playback speed |\n` +
+      `| \`/voice pitch [0.5–2.0]\` | Set TTS pitch |\n` +
+      `| \`/vad [ms]\` | Set VAD silence timeout in ms (default 1200) |\n` +
+      `| \`/help\` | Show this reference |`,
+      null
+    );
+
   } else if (base === '/mute') {
     btnAudioToggle.click();
+
   } else if (base === '/lang') {
     const code = parts[1] || 'en-US';
     currentLanguage = code;
     if (recognition) {
       recognition.lang = currentLanguage;
-      if (audioMode !== 'MUTED') {
-        recognition.stop(); // auto-restarts with new lang
-      }
+      stopRecognition();
+      setTimeout(startRecognition, 200);
     }
-    document.getElementById('lang-status').innerText = `AUTO (${code.toUpperCase()})`;
-    addSystemLog('SYS', `Vocal recognition lang set to locale: ${code}`);
+    document.getElementById('lang-status').innerText = code.toUpperCase();
+    addSystemLog('SYS', `Recognition locale set to: ${code}`);
+
+  } else if (base === '/voice') {
+    const sub = (parts[1] || '').toLowerCase();
+    const val = parseFloat(parts[2]);
+
+    if (sub === 'speed' && !isNaN(val)) {
+      voiceSpeed = Math.max(0.5, Math.min(2.0, val));
+      addSystemLog('SYS', `TTS speed set to ${voiceSpeed.toFixed(2)}x`);
+      speakText(`Speed set to ${voiceSpeed.toFixed(1)}x`);
+    } else if (sub === 'pitch' && !isNaN(val)) {
+      voicePitch = Math.max(0.5, Math.min(2.0, val));
+      addSystemLog('SYS', `TTS pitch set to ${voicePitch.toFixed(2)}`);
+      speakText(`Pitch adjusted.`);
+    } else {
+      addSystemLog('WARN', 'Usage: /voice speed [0.5-2.0]  or  /voice pitch [0.5-2.0]');
+    }
+
+  } else if (base === '/vad') {
+    const ms = parseInt(parts[1]);
+    if (!isNaN(ms) && ms >= 300 && ms <= 5000) {
+      VAD_SILENCE_MS_dynamic = ms;
+      addSystemLog('SYS', `VAD silence timeout set to ${ms}ms`);
+    } else {
+      addSystemLog('WARN', 'Usage: /vad [300–5000]  (milliseconds)');
+    }
+
   } else {
-    addSystemLog('WARN', `Unknown local instruction code: ${base}`);
+    addSystemLog('WARN', `Unknown local command: ${base}. Type /help for reference.`);
   }
 }
 
@@ -634,85 +822,119 @@ btnClearChat.addEventListener('click', () => {
 });
 
 // ==========================================
-// GLOWING AUDIO WAVEFORM CANVAS ANIMATION
+// REAL MICROPHONE AUDIO VISUALIZER
+// (Web Audio API AnalyserNode — your actual voice)
 // ==========================================
+
+let audioContext = null;
+let analyserNode = null;
+let micSource = null;
+let micStream = null;
+let analyserData = null;
+
+// TTS Oscillator to simulate speaking waveform during synthesis
+let synthGainNode = null;
+let synthOscillator = null;
+
+async function initAudioVisualizer(stream) {
+  try {
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyserNode = audioContext.createAnalyser();
+    analyserNode.fftSize = 256;
+    analyserNode.smoothingTimeConstant = 0.82;
+    analyserData = new Uint8Array(analyserNode.frequencyBinCount);
+
+    micSource = audioContext.createMediaStreamSource(stream);
+    micSource.connect(analyserNode);
+    // NOTE: Do NOT connect analyserNode to destination — we don't want mic feedback through speakers.
+
+    addSystemLog('OK', 'Real-time microphone audio visualizer armed.');
+  } catch (e) {
+    addSystemLog('WARN', `Audio visualizer init failed: ${e.message}`);
+  }
+}
+
+function getAnalyserLevel() {
+  // Returns 0.0–1.0 representing current mic/synth amplitude
+  if (!analyserNode || !analyserData) return 0.05;
+  analyserNode.getByteFrequencyData(analyserData);
+  let sum = 0;
+  for (let i = 0; i < analyserData.length; i++) {
+    sum += analyserData[i];
+  }
+  const avg = sum / analyserData.length;
+  return Math.min(avg / 128, 1.0);
+}
+
 function drawWaveform() {
   ctx.clearRect(0, 0, waveformCanvas.width, waveformCanvas.height);
-  
-  const width = waveformCanvas.width;
+
+  const width  = waveformCanvas.width;
   const height = waveformCanvas.height;
-  const midY = height / 2;
-  
-  // Dynamic wave parameters based on waveActivity
-  // If speaking/hearing, height increases
-  const amplitude = waveActivity * (height / 2.5);
-  
-  // Drawing parameters
-  ctx.strokeStyle = '#33ff99';
-  ctx.shadowColor = '#33ff99';
-  ctx.shadowBlur = 8;
-  ctx.lineWidth = 1.5;
-  
-  // Draw primary phosphor wave
+  const midY   = height / 2;
+
+  // ── Determine amplitude source ──
+  let amplitude;
+  if (speechSynth.speaking) {
+    // TTS speaking: animate with a rapid golden oscillation
+    amplitude = (0.5 + 0.4 * Math.abs(Math.sin(wavePhase * 6))) * (height / 2.5);
+    ctx.strokeStyle = '#ffb84d';
+    ctx.shadowColor  = '#ffb84d';
+  } else if (audioMode === 'MUTED') {
+    // Flatline
+    amplitude = 0.03 * (height / 2.5);
+    ctx.strokeStyle = '#3d4a45';
+    ctx.shadowColor  = '#3d4a45';
+  } else {
+    // Listening: use real analyser level
+    const level = getAnalyserLevel();
+    amplitude = (0.08 + level * 0.92) * (height / 2.5);
+    ctx.strokeStyle = '#33ff99';
+    ctx.shadowColor  = '#33ff99';
+  }
+
+  ctx.shadowBlur = 10;
+  ctx.lineWidth  = 1.8;
+
+  // ── Primary wave ──
   ctx.beginPath();
   for (let x = 0; x < width; x++) {
-    // Combine multiple sine waves for organic noise
-    const angle1 = (x / 40) + wavePhase;
-    const angle2 = (x / 20) - (wavePhase * 1.5);
-    const angle3 = (x / 80) + (wavePhase * 0.5);
-    
-    // Wave envelope: flatten at boundaries
+    const a1 = (x / 40) + wavePhase;
+    const a2 = (x / 22) - wavePhase * 1.4;
+    const a3 = (x / 80) + wavePhase * 0.5;
     const envelope = Math.sin((x / width) * Math.PI);
-    
-    const y = midY + (Math.sin(angle1) * 0.5 + Math.cos(angle2) * 0.3 + Math.sin(angle3) * 0.2) * amplitude * envelope;
-    
-    if (x === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
+    const y = midY + (Math.sin(a1) * 0.5 + Math.cos(a2) * 0.3 + Math.sin(a3) * 0.2) * amplitude * envelope;
+    x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
   ctx.stroke();
 
-  // Draw secondary cyan wave (slightly out of phase, offset)
-  ctx.strokeStyle = '#3ad6ff';
-  ctx.shadowColor = '#3ad6ff';
-  ctx.shadowBlur = 4;
-  ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  for (let x = 0; x < width; x++) {
-    const angle1 = (x / 30) - wavePhase;
-    const angle2 = (x / 15) + (wavePhase * 0.8);
-    const envelope = Math.sin((x / width) * Math.PI);
-    
-    const y = midY + (Math.cos(angle1) * 0.6 + Math.sin(angle2) * 0.4) * (amplitude * 0.7) * envelope;
-    
-    if (x === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
+  // ── Secondary cyan ghost wave (only when listening) ──
+  if (audioMode !== 'MUTED' && !speechSynth.speaking) {
+    ctx.strokeStyle = '#3ad6ff';
+    ctx.shadowColor  = '#3ad6ff';
+    ctx.shadowBlur   = 4;
+    ctx.lineWidth    = 0.8;
+    ctx.beginPath();
+    for (let x = 0; x < width; x++) {
+      const a1 = (x / 30) - wavePhase;
+      const a2 = (x / 15) + wavePhase * 0.8;
+      const envelope = Math.sin((x / width) * Math.PI);
+      const level = getAnalyserLevel();
+      const amp2  = (0.06 + level * 0.7) * (height / 2.5);
+      const y = midY + (Math.cos(a1) * 0.6 + Math.sin(a2) * 0.4) * amp2 * envelope;
+      x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
+    ctx.stroke();
   }
-  ctx.stroke();
-  
+
   // Advance phase
-  wavePhase += (audioMode === 'MUTED') ? 0.02 : 0.08;
-  
-  // Dynamic decay to idle noise
-  if (speechSynth.speaking) {
-    waveActivity = 0.75;
-  } else if (audioMode !== 'MUTED') {
-    // Listening, small micro fluctuations
-    waveActivity = 0.15 + Math.sin(wavePhase * 2) * 0.05;
-  } else {
-    // Flatline/idle
-    waveActivity = 0.02;
-  }
-  
+  wavePhase += speechSynth.speaking ? 0.14 : (audioMode === 'MUTED' ? 0.015 : 0.07);
+
   waveAnimationId = requestAnimationFrame(drawWaveform);
 }
 
 drawWaveform();
+
 
 // Helper escape HTML
 function escapeHtml(text) {
