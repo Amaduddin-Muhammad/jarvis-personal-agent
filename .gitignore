@@ -3,3 +3,4 @@ backend/.venv/
 backend/jarvis.db
 *.png
 *.log
+.env
