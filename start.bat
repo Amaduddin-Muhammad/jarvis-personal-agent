@@ -10,7 +10,7 @@ echo Waiting for backend to start...
 timeout /t 3 /nobreak >nul
 
 echo Starting HUD Interface (Google Chrome App Mode)...
-start chrome --app="file:///%~dp0src/index.html" --use-fake-ui-for-media-stream
+start chrome --app="http://localhost:8000"
 
 echo JARVIS launched.
 

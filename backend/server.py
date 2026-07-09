@@ -5,7 +5,7 @@ import uuid
 import time
 import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from backend.memory import MemoryCore
 from backend.agent import JarvisOrchestrator
 from backend.tools import TOOLS_REGISTRY, execute_tool_by_name
@@ -308,6 +308,16 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"WS error: {e}", flush=True)
         manager.disconnect(websocket)
+
+# Serve static HUD frontend files on HTTP to ensure permanent microphone permissions
+@app.get("/{filename:path}")
+async def get_static_file(filename: str):
+    if not filename:
+        filename = "index.html"
+    file_path = os.path.join("src", filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    return FileResponse("src/index.html")
 
 # FastAPI startup hook to trigger vitals monitoring task
 @app.on_event("startup")
