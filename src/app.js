@@ -193,12 +193,33 @@ function addThoughtStep(stepNum, kind, content) {
 
   const div = document.createElement('div');
   div.className = `thought-step ${kindClass[kind] || ''}`;
-  div.textContent = `[${kindLabel[kind] || kind.toUpperCase()} #${stepNum}] ${content}`;
+  // Truncate very long observe results for display
+  const displayContent = content.length > 400 ? content.substring(0, 400) + '...' : content;
+  div.textContent = `[${kindLabel[kind] || kind.toUpperCase()} #${stepNum}] ${displayContent}`;
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 
   // Auto-expand if collapsed
   if (thoughtChainCollapsed) toggleThoughtChain();
+
+  // ── Auto-render image outputs from observe steps ──
+  if (kind === 'observe') {
+    try {
+      // Extract JSON from observe content
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const result = JSON.parse(jsonMatch[0]);
+        if (result.status === 'success' && result.file_url) {
+          const fname = result.filename || 'output';
+          if (fname.match(/\.(png|jpg|jpeg|webp)$/i)) {
+            renderImageCard(result.file_url, fname);
+          } else if (fname.match(/\.docx?$/i)) {
+            renderDocumentCard(result.file_url, fname);
+          }
+        }
+      }
+    } catch(e) { /* not JSON - that's fine */ }
+  }
 }
 
 // ==========================================
@@ -609,6 +630,72 @@ function renderAgentResponse(content, speakTextContent) {
     speakText(speakTextContent);
   } else {
     speakText(content.replace(/```[\s\S]*?```/g, "[code snippet]").substring(0, 150));
+  }
+
+  // Auto-detect and render any image file:// URLs embedded in the display content
+  const imgMatches = content.match(/file:\/\/\/[^\s"']+\.(png|jpg|jpeg|webp)/gi);
+  if (imgMatches) {
+    imgMatches.forEach(fileUrl => {
+      const fname = fileUrl.split('/').pop();
+      renderImageCard(fileUrl, fname);
+    });
+  }
+}
+
+// Render a generated image inline in the chat panel
+function renderImageCard(fileUrl, filename, caption) {
+  const timestamp = new Date().toLocaleTimeString();
+  const cardDiv = document.createElement('div');
+  cardDiv.className = 'msg agent image-card';
+  cardDiv.innerHTML = `
+    <span class="timestamp">[${timestamp}] JARVIS · IMAGE OUTPUT</span>
+    <div class="content">
+      <div class="gen-image-container">
+        <img src="${fileUrl}" alt="${escapeHtml(filename)}" class="gen-image"
+             onclick="openImageFullscreen('${fileUrl}')" title="Click to open fullscreen" />
+        <div class="gen-image-meta">
+          <span class="gen-filename">📁 ${escapeHtml(filename)}</span>
+          <a href="${fileUrl}" target="_blank" class="gen-open-btn">OPEN ↗</a>
+        </div>
+        ${caption ? `<div class="gen-image-caption">${escapeHtml(caption)}</div>` : ''}
+      </div>
+    </div>
+  `;
+  chatMessages.appendChild(cardDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+// Render a .docx download card inline
+function renderDocumentCard(fileUrl, filename) {
+  const timestamp = new Date().toLocaleTimeString();
+  const cardDiv = document.createElement('div');
+  cardDiv.className = 'msg agent document-card';
+  cardDiv.innerHTML = `
+    <span class="timestamp">[${timestamp}] JARVIS · DOCUMENT OUTPUT</span>
+    <div class="content">
+      <div class="gen-doc-container">
+        <div class="gen-doc-icon">📄</div>
+        <div class="gen-doc-info">
+          <div class="gen-filename">${escapeHtml(filename)}</div>
+          <div class="gen-doc-actions">
+            <a href="${fileUrl}" class="gen-open-btn" onclick="openDocFile('${fileUrl}')" target="_blank">OPEN IN WORD ↗</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  chatMessages.appendChild(cardDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function openImageFullscreen(fileUrl) {
+  const win = window.open(fileUrl, '_blank', 'width=1100,height=1100,scrollbars=no,toolbar=no');
+}
+
+function openDocFile(fileUrl) {
+  const path = fileUrl.replace('file:///', '').replace(/\//g, '\\');
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'user_message', content: `/open ${path}`, is_voice: false }));
   }
 }
 

@@ -10,6 +10,8 @@ import urllib.request
 import urllib.parse
 import html
 import re
+from backend.image_gen import generate_image as _generate_image
+from backend.docx_gen import create_word_document as _create_word_document
 
 
 # Fallback for clipboard because pywin32 might not be fully configured or needs compilation.
@@ -658,6 +660,126 @@ def process_kill(process_name):
         if killed:
             return {"status": "success", "message": f"Terminated {killed} instance(s) of '{process_name}'."}
         return {"status": "error", "message": f"No process named '{process_name}' found."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ==========================================
+# IMAGE GENERATION TOOLS
+# ==========================================
+
+@register_tool(
+    name="image.generate",
+    tier=1,
+    description="Generates an image from a text prompt using AI (NVIDIA SDXL). Returns the saved image path and a file:// URL for HUD display.",
+    schema={
+        "type": "object",
+        "properties": {
+            "prompt": {"type": "string", "description": "Detailed text description of the image to generate."},
+            "filename": {"type": "string", "description": "Optional output filename (without path). E.g. 'sunset_city.png'"},
+            "style_preset": {"type": "string", "description": "Optional style: photorealistic, cinematic, anime, oil_painting, watercolor, 3d_render, pixel_art, sketch"},
+            "width": {"type": "integer", "description": "Image width in pixels (default 1024, max 1024 for SDXL)"},
+            "height": {"type": "integer", "description": "Image height in pixels (default 1024)"},
+            "negative_prompt": {"type": "string", "description": "Elements to exclude from the image."},
+            "seed": {"type": "integer", "description": "Random seed for reproducibility. 0 = random."}
+        },
+        "required": ["prompt"]
+    }
+)
+def image_generate(prompt, filename=None, style_preset="", width=1024, height=1024, negative_prompt="", seed=0):
+    return _generate_image(
+        prompt=prompt,
+        filename=filename,
+        style_preset=style_preset,
+        width=width,
+        height=height,
+        negative_prompt=negative_prompt,
+        seed=seed
+    )
+
+
+@register_tool(
+    name="image.list_generated",
+    tier=0,
+    description="Lists all previously generated images in the output/images directory.",
+    schema={"type": "object", "properties": {}}
+)
+def image_list_generated():
+    try:
+        img_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "output", "images")
+        os.makedirs(img_dir, exist_ok=True)
+        files = [f for f in os.listdir(img_dir) if f.endswith(('.png', '.jpg', '.jpeg', '.webp'))]
+        files.sort(key=lambda f: os.path.getmtime(os.path.join(img_dir, f)), reverse=True)
+        return {
+            "status": "success",
+            "count": len(files),
+            "images": [
+                {
+                    "filename": f,
+                    "path": os.path.join(img_dir, f),
+                    "file_url": "file:///" + os.path.join(img_dir, f).replace("\\", "/")
+                }
+                for f in files[:20]
+            ]
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ==========================================
+# DOCUMENT GENERATION TOOLS
+# ==========================================
+
+@register_tool(
+    name="document.create_word",
+    tier=1,
+    description="Creates a rich, professionally formatted Word (.docx) document with title page, table of contents, headings, body text, bullet lists, tables, code blocks, and embedded images.",
+    schema={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Document title (appears on title page)."},
+            "sections": {
+                "type": "array",
+                "description": "List of document sections. Each section is an object with: heading (str), level (1-3), content (str), bullets (list), numbered_list (list), table ({headers, rows}), code (str), code_lang (str), image_path (str), image_caption (str).",
+                "items": {"type": "object"}
+            },
+            "subtitle": {"type": "string", "description": "Optional subtitle shown below the title."},
+            "author": {"type": "string", "description": "Author name shown on title page and footer. Default: JARVIS AI"},
+            "filename": {"type": "string", "description": "Output filename. E.g. 'report.docx'"},
+            "include_toc_marker": {"type": "boolean", "description": "Include a table of contents page. Default true."}
+        },
+        "required": ["title", "sections"]
+    }
+)
+def document_create_word(title, sections, subtitle="", author="JARVIS AI", filename=None, include_toc_marker=True):
+    return _create_word_document(
+        title=title,
+        sections=sections,
+        subtitle=subtitle,
+        author=author,
+        filename=filename,
+        include_toc_marker=include_toc_marker
+    )
+
+
+@register_tool(
+    name="document.open_file",
+    tier=1,
+    description="Opens a file (Word doc, image, PDF, etc.) with the system default application.",
+    schema={
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Absolute path to the file to open."}
+        },
+        "required": ["path"]
+    }
+)
+def document_open_file(path):
+    try:
+        if not os.path.exists(path):
+            return {"status": "error", "message": f"File not found: {path}"}
+        os.startfile(path)
+        return {"status": "success", "message": f"Opened: {os.path.basename(path)}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

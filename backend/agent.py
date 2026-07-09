@@ -56,6 +56,9 @@ You MUST always output a single valid JSON object with exactly this structure:
 - `reminder.set` — {"text": "reminder message", "seconds": 1800} — Set a timed reminder (seconds from now)
 - `volume.set` — {"level": 50} — Set system volume 0-100
 - `window.control` — {"action": "minimize"|"maximize"|"restore"} — Control active window
+- `image.generate` — {"prompt": "...", "style_preset": "photorealistic|cinematic|anime|oil_painting|watercolor|3d_render|pixel_art|sketch", "width": 1024, "height": 1024, "negative_prompt": "...", "filename": "name.png", "seed": 0} — Generate AI image from text prompt using NVIDIA SDXL
+- `document.create_word` — {"title": "...", "sections": [...], "subtitle": "...", "author": "...", "filename": "report.docx"} — Create rich Word .docx document with title page, TOC, sections, images, tables, code blocks
+- `document.open_file` — {"path": "/abs/path/to/file"} — Open a file with default application (Word, image viewer, etc.)
 
 ### Tier 2 — Requires Owner Confirmation
 - `fs.write` — {"path": "file_path", "content": "text"} — Write/create a file [SENSITIVE]
