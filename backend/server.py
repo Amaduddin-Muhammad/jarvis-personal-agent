@@ -9,7 +9,10 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend.memory import MemoryCore
 from backend.agent import JarvisOrchestrator
-from backend.tools import TOOLS_REGISTRY, execute_tool_by_name
+from backend.tools import TOOLS_REGISTRY, execute_tool_by_name, inject_cores
+from backend.notes import NotesCore
+from backend.reminders import RemindersCore
+from backend.proactive import ProactiveAgent
 
 app = FastAPI(title="JARVIS Server Core")
 
@@ -24,7 +27,12 @@ app.add_middleware(
 
 # Shared Core States
 memory = MemoryCore()
+notes = NotesCore()
+reminders = RemindersCore()
 orchestrator = JarvisOrchestrator(memory)
+
+# Inject notes and reminders cores into tools registry
+inject_cores(notes, reminders)
 
 # Track active WebSocket connections
 class ConnectionManager:
@@ -43,6 +51,14 @@ class ConnectionManager:
         for connection in self.active_connections:
             try:
                 await connection.send_json(message)
+            except Exception:
+                pass
+
+    async def broadcast_raw(self, raw_str: str):
+        """Broadcast a pre-serialized JSON string."""
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(raw_str)
             except Exception:
                 pass
 
@@ -132,8 +148,9 @@ async def monitor_vitals_loop():
 # RECURSIVE AGENT LOOP EXECUTOR
 # ==========================================
 async def execute_agent_loop(websocket: WebSocket, user_text: str, depth: int = 0):
-    if depth > 3:
-        await send_log(websocket, "WARN", "Agent recursion depth limit exceeded (3). Halting execution loop.")
+    if depth > 2:
+        await send_log(websocket, "WARN", "Agent depth limit reached. Halting.")
+        await websocket.send_json({"type": "agent_state", "state": "IDLE"})
         return
 
     loop = asyncio.get_running_loop()
@@ -320,10 +337,15 @@ async def get_static_file(filename: str):
         return FileResponse(file_path)
     return FileResponse("src/index.html")
 
-# FastAPI startup hook to trigger vitals monitoring task
+# FastAPI startup hook to trigger vitals monitoring task and proactive agent
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(monitor_vitals_loop())
+    # Start the proactive agent background loop
+    async def proactive_broadcast(raw_str: str):
+        await manager.broadcast_raw(raw_str)
+    proactive_agent = ProactiveAgent(reminders, proactive_broadcast)
+    asyncio.create_task(proactive_agent.run_loop())
 
 if __name__ == "__main__":
     import uvicorn

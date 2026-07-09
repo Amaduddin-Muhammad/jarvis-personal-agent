@@ -99,6 +99,7 @@ function connectWebSocket() {
         break;
       case 'agent_response':
         renderAgentResponse(data.content || data.speak_text, data.speak_text);
+        setAgentState('IDLE');
         break;
       case 'require_confirmation':
         showConfirmationGate(data.id, data.tool, data.scope, data.rationale);
@@ -108,6 +109,15 @@ function connectWebSocket() {
         break;
       case 'memory':
         updateMemoryViewer(data.facts);
+        break;
+      case 'step':
+        addThoughtStep(data.step_num, data.kind, data.content);
+        break;
+      case 'agent_state':
+        setAgentState(data.state);
+        break;
+      case 'proactive_alert':
+        showProactiveToast(data.title, data.message, data.speak);
         break;
       default:
         console.log("Unhandled message type", data);
@@ -127,6 +137,86 @@ function connectWebSocket() {
 }
 
 connectWebSocket();
+
+// ==========================================
+// AGENT STATE INDICATOR
+// ==========================================
+function setAgentState(state) {
+  const el = document.getElementById('agent-state');
+  if (!el) return;
+  const stateMap = {
+    'IDLE':     { text: '◉ IDLE',     cls: 'idle-color' },
+    'THINKING': { text: '◈ THINKING', cls: 'think-color' },
+    'ACTING':   { text: '⚙ ACTING',   cls: 'act-color' },
+    'SPEAKING': { text: '◆ SPEAKING', cls: 'speak-color' },
+  };
+  const s = stateMap[state] || stateMap['IDLE'];
+  el.textContent = s.text;
+  el.className = `value ${s.cls}`;
+}
+
+// ==========================================
+// THOUGHT CHAIN PANEL
+// ==========================================
+let thoughtChainCollapsed = false;
+
+function toggleThoughtChain() {
+  const steps = document.getElementById('thought-chain-steps');
+  const btn = document.getElementById('thought-chain-toggle');
+  thoughtChainCollapsed = !thoughtChainCollapsed;
+  steps.classList.toggle('collapsed', thoughtChainCollapsed);
+  btn.textContent = thoughtChainCollapsed ? '▶ EXPAND' : '▼ COLLAPSE';
+}
+
+function addThoughtStep(stepNum, kind, content) {
+  const container = document.getElementById('thought-chain-steps');
+  if (!container) return;
+
+  // On first step of a new query, clear old steps
+  if (stepNum === 1 && kind === 'think') {
+    container.innerHTML = '';
+  }
+
+  const kindLabel = { think: '🧠 THINK', act: '⚙ ACT', observe: '👁 OBSERVE' };
+  const kindClass = { think: 'think-step', act: 'act-step', observe: 'observe-step' };
+
+  const div = document.createElement('div');
+  div.className = `thought-step ${kindClass[kind] || ''}`;
+  div.textContent = `[${kindLabel[kind] || kind.toUpperCase()} #${stepNum}] ${content}`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+
+  // Auto-expand if collapsed
+  if (thoughtChainCollapsed) toggleThoughtChain();
+}
+
+// ==========================================
+// PROACTIVE ALERT TOAST
+// ==========================================
+function showProactiveToast(title, message, speakText) {
+  const toast = document.getElementById('proactive-toast');
+  document.getElementById('toast-header').textContent = title;
+  document.getElementById('toast-body').textContent = message;
+  toast.classList.remove('hidden');
+  // Speak the alert
+  if (speakText && audioMode !== 'MUTED') {
+    speakText_fn(speakText);
+  }
+  // Auto-dismiss after 12 seconds
+  setTimeout(dismissToast, 12000);
+}
+
+function dismissToast() {
+  const toast = document.getElementById('proactive-toast');
+  if (toast) toast.classList.add('hidden');
+}
+
+// Alias speakText for use in proactive alerts
+function speakText_fn(text) {
+  speakText(text);
+}
+
+
 
 // ==========================================
 // VOICE SYNTHESIS (TTS) & BARGE-IN

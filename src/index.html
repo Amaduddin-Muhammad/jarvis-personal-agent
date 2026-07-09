@@ -19,7 +19,7 @@
     <header class="window-titlebar">
       <div class="drag-region">
         <span class="titlebar-logo">◈</span>
-        <span class="titlebar-title">JARVIS CORE UTILITY v1.0.0</span>
+        <span class="titlebar-title">JARVIS CORE UTILITY v2.0.0</span>
       </div>
       <div class="window-controls">
         <button id="btn-minimize" title="Minimize to Taskbar">─</button>
@@ -45,6 +45,10 @@
       <div class="status-item">
         <span class="label">SECURE COMM:</span>
         <span class="value ok-color">WS://LOCALHOST:8000</span>
+      </div>
+      <div class="status-item">
+        <span class="label">AGENT STATE:</span>
+        <span id="agent-state" class="value idle-color">◉ IDLE</span>
       </div>
       <div class="status-item date-time">
         <span id="current-time" class="value font-alt">00:00:00</span>
@@ -153,6 +157,17 @@
             <input type="text" id="console-input" autocomplete="off" placeholder="Enter voice query or direct command (e.g. /cpu, /screenshot)..." autofocus>
             <button type="submit" class="hud-btn">EXECUTE</button>
           </form>
+
+          <!-- AGENT THOUGHT CHAIN PANEL -->
+          <div class="thought-chain-box" id="thought-chain-box">
+            <div class="thought-chain-header">
+              <span>⚡ AGENT THOUGHT CHAIN</span>
+              <button class="thought-chain-toggle" id="thought-chain-toggle" onclick="toggleThoughtChain()">▼ COLLAPSE</button>
+            </div>
+            <div class="thought-chain-steps" id="thought-chain-steps">
+              <div class="thought-step idle-step">Agent idle — waiting for input.</div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -196,7 +211,27 @@
             <div class="empty-memory">No recall history in vector core.</div>
           </div>
         </div>
-        
+
+        <!-- NOTES PANEL -->
+        <div class="panel-section">
+          <div class="panel-header">
+            <span class="panel-icon">📓</span> NOTES
+          </div>
+          <div class="notes-viewer font-alt" id="notes-list">
+            <div class="empty-memory">No notes saved yet.</div>
+          </div>
+        </div>
+
+        <!-- REMINDERS PANEL -->
+        <div class="panel-section">
+          <div class="panel-header">
+            <span class="panel-icon">⏰</span> REMINDERS
+          </div>
+          <div class="notes-viewer font-alt" id="reminders-list">
+            <div class="empty-memory">No active reminders.</div>
+          </div>
+        </div>
+
         <!-- SYSTEM BUTTONS -->
         <div class="panel-section system-buttons-grid">
           <button id="btn-audio-toggle" class="hud-btn glow-btn btn-warning">STANDBY</button>
@@ -239,6 +274,13 @@
         <button id="modal-btn-cancel" class="hud-btn">ABORT ACTION</button>
       </div>
     </div>
+  </div>
+
+  <!-- PROACTIVE ALERT TOAST -->
+  <div id="proactive-toast" class="proactive-toast hidden">
+    <div class="toast-header" id="toast-header">🔔 JARVIS Alert</div>
+    <div class="toast-body" id="toast-body">Alert message here.</div>
+    <button class="toast-dismiss" onclick="dismissToast()">DISMISS</button>
   </div>
 
   <script src="app.js"></script>

@@ -22,6 +22,10 @@
   --text-secondary: #6a8f7d;
   --text-dim: #3d4a45;
   --text-cyan: #3ad6ff;
+  --text-idle: #6a8f7d;
+  --text-thinking: #3ad6ff;
+  --text-acting: #ffb84d;
+  --text-speaking: #33ff99;
   
   --font-mono: 'Fira Code', 'Share Tech Mono', 'Courier New', monospace;
   --font-alt: 'Share Tech Mono', monospace;
@@ -868,3 +872,190 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
+
+/* ==========================================
+   AGENT STATE INDICATOR
+   ========================================== */
+.idle-color   { color: var(--text-idle);     }
+.think-color  { color: var(--text-thinking); animation: cyan-pulse 1s ease-in-out infinite; }
+.act-color    { color: var(--text-acting);   animation: orange-pulse 0.8s ease-in-out infinite; }
+.speak-color  { color: var(--text-speaking); animation: green-blink 1s step-start infinite; }
+
+@keyframes cyan-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+@keyframes orange-pulse {
+  0%, 100% { opacity: 1; text-shadow: 0 0 8px var(--accent-orange); }
+  50%       { opacity: 0.5; text-shadow: none; }
+}
+
+/* ==========================================
+   THOUGHT CHAIN PANEL
+   ========================================== */
+.thought-chain-box {
+  border: 1px solid var(--accent-cyan-dim);
+  border-radius: 4px;
+  margin-top: 10px;
+  background: rgba(58, 214, 255, 0.03);
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.thought-chain-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  background: rgba(58, 214, 255, 0.08);
+  color: var(--text-cyan);
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  font-family: var(--font-mono);
+  border-bottom: 1px solid rgba(58, 214, 255, 0.15);
+}
+
+.thought-chain-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  padding: 2px 6px;
+  transition: color 0.2s;
+}
+.thought-chain-toggle:hover { color: var(--text-cyan); }
+
+.thought-chain-steps {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.thought-chain-steps.collapsed {
+  max-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.thought-step {
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  padding: 5px 8px;
+  border-radius: 3px;
+  border-left: 3px solid transparent;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  animation: step-appear 0.25s ease-out;
+}
+
+@keyframes step-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.thought-step.idle-step   { color: var(--text-dim); border-left-color: var(--text-dim); }
+.thought-step.think-step  { color: var(--text-cyan); border-left-color: var(--accent-cyan); background: rgba(58,214,255,0.05); }
+.thought-step.act-step    { color: var(--accent-orange); border-left-color: var(--accent-orange); background: rgba(255,184,77,0.05); }
+.thought-step.observe-step{ color: var(--text-secondary); border-left-color: var(--text-secondary); background: rgba(100,100,100,0.05); }
+
+/* ==========================================
+   NOTES & REMINDERS VIEWER
+   ========================================== */
+.notes-viewer {
+  min-height: 40px;
+  max-height: 100px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.note-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: var(--text-cyan);
+  padding: 3px 6px;
+  border-left: 2px solid var(--accent-cyan-dim);
+  background: rgba(58, 214, 255, 0.04);
+  border-radius: 2px;
+  cursor: default;
+}
+
+.note-item:hover { background: rgba(58, 214, 255, 0.1); }
+
+.reminder-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: var(--accent-orange);
+  padding: 3px 6px;
+  border-left: 2px solid var(--accent-orange);
+  background: rgba(255, 184, 77, 0.04);
+  border-radius: 2px;
+}
+
+/* ==========================================
+   PROACTIVE ALERT TOAST
+   ========================================== */
+.proactive-toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 320px;
+  background: rgba(5, 10, 14, 0.96);
+  border: 1px solid var(--accent-orange);
+  border-radius: 6px;
+  box-shadow: 0 0 20px rgba(255, 184, 77, 0.3);
+  z-index: 9999;
+  overflow: hidden;
+  animation: toast-slide-in 0.35s ease-out;
+}
+
+.proactive-toast.hidden { display: none; }
+
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.toast-header {
+  background: rgba(255, 184, 77, 0.12);
+  color: var(--accent-orange);
+  padding: 8px 14px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.06em;
+  border-bottom: 1px solid rgba(255, 184, 77, 0.2);
+}
+
+.toast-body {
+  color: var(--text-primary);
+  padding: 10px 14px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+
+.toast-dismiss {
+  display: block;
+  width: 100%;
+  background: rgba(255, 184, 77, 0.08);
+  border: none;
+  border-top: 1px solid rgba(255, 184, 77, 0.15);
+  color: var(--accent-orange);
+  padding: 6px;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  letter-spacing: 0.1em;
+  transition: background 0.2s;
+}
+.toast-dismiss:hover { background: rgba(255, 184, 77, 0.18); }
