@@ -9,7 +9,8 @@ start "JARVIS Backend" cmd /c "call backend\.venv\Scripts\activate.bat && python
 echo Waiting for backend to start...
 timeout /t 3 /nobreak >nul
 
-echo Starting HUD Interface (Electron)...
-npm start
+echo Starting HUD Interface (Google Chrome App Mode)...
+start chrome --app="file:///%~dp0src/index.html"
 
-echo JARVIS closed.
+echo JARVIS launched.
+
