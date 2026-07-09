@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, session } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -88,6 +88,20 @@ function createTray() {
 app.whenReady().then(() => {
   createMainWindow();
   createTray();
+
+  // Auto-approve microphone permission requests for Web Speech API
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+    if (permission === 'media') return true;
+    return false;
+  });
+
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    if (permission === 'media') {
+      callback(true);
+      return;
+    }
+    callback(false);
+  });
 
   // Register Alt+Space shortcut to toggle HUD
   globalShortcut.register('Alt+Space', () => {
