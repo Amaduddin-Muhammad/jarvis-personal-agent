@@ -6,6 +6,7 @@ import time
 import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from backend.memory import MemoryCore
 from backend.agent import JarvisOrchestrator
 from backend.tools import TOOLS_REGISTRY, execute_tool_by_name
