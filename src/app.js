@@ -606,12 +606,12 @@ function drawWaveform() {
   ctx.stroke();
   
   // Advance phase
-  wavePhase += isAudioMuted ? 0.02 : 0.08;
+  wavePhase += (audioMode === 'MUTED') ? 0.02 : 0.08;
   
   // Dynamic decay to idle noise
   if (speechSynth.speaking) {
     waveActivity = 0.75;
-  } else if (!isAudioMuted) {
+  } else if (audioMode !== 'MUTED') {
     // Listening, small micro fluctuations
     waveActivity = 0.15 + Math.sin(wavePhase * 2) * 0.05;
   } else {
