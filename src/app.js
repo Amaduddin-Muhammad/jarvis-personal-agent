@@ -98,7 +98,7 @@ function connectWebSocket() {
         updateVitals(data.data);
         break;
       case 'agent_response':
-        renderAgentResponse(data.content, data.speak_text);
+        renderAgentResponse(data.content || data.speak_text, data.speak_text);
         break;
       case 'require_confirmation':
         showConfirmationGate(data.id, data.tool, data.scope, data.rationale);
