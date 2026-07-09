@@ -15,6 +15,9 @@
   --accent-red: #ff4d4d;
   --accent-red-glow: rgba(255, 77, 77, 0.25);
   
+  --accent-orange: #ffb84d;
+  --accent-orange-glow: rgba(255, 184, 77, 0.25);
+  
   --text-primary: #33ff99;
   --text-secondary: #6a8f7d;
   --text-dim: #3d4a45;
@@ -512,6 +515,18 @@ body {
   box-shadow: 0 0 10px var(--accent-red);
 }
 
+.btn-warning {
+  border-color: var(--accent-orange);
+  color: var(--accent-orange);
+  background-color: rgba(255, 184, 77, 0.08);
+}
+
+.btn-warning:hover {
+  background-color: var(--accent-orange);
+  color: var(--bg-dark);
+  box-shadow: 0 0 10px var(--accent-orange);
+}
+
 .btn-ok {
   border-color: var(--accent-cyan);
   color: var(--accent-cyan);
@@ -816,6 +831,11 @@ body {
 .muted-color {
   color: var(--text-dim) !important;
   text-shadow: none !important;
+}
+
+.warning-color {
+  color: var(--accent-orange);
+  text-shadow: 0 0 4px var(--accent-orange);
 }
 
 .info-color {

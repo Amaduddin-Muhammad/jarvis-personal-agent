@@ -1,7 +1,7 @@
 // HUD state variables
 let socket = null;
 let reconnectInterval = 3000;
-let isAudioMuted = true;
+let audioMode = 'STANDBY'; // 'MUTED' | 'STANDBY' | 'AWAKE'
 let recognition = null;
 let speechSynth = window.speechSynthesis;
 let activeUtterance = null;
@@ -132,7 +132,7 @@ connectWebSocket();
 // VOICE SYNTHESIS (TTS) & BARGE-IN
 // ==========================================
 function speakText(text) {
-  if (isAudioMuted) return;
+  if (audioMode === 'MUTED') return;
 
   // Interrupt previous speak
   speechSynth.cancel();
@@ -151,13 +151,13 @@ function speakText(text) {
   activeUtterance.pitch = 0.95; // Slightly lower for a calm baritone feel
 
   activeUtterance.onend = () => {
-    waveActivity = isAudioMuted ? 0.05 : 0.2; // Return to listening/idle noise
+    waveActivity = (audioMode === 'MUTED') ? 0.05 : ((audioMode === 'STANDBY') ? 0.08 : 0.2); // Return to listening/idle noise
     activeUtterance = null;
   };
 
   activeUtterance.onerror = (e) => {
     console.error("Speech error", e);
-    waveActivity = isAudioMuted ? 0.05 : 0.2;
+    waveActivity = (audioMode === 'MUTED') ? 0.05 : ((audioMode === 'STANDBY') ? 0.08 : 0.2);
   };
 
   speechSynth.speak(activeUtterance);
@@ -171,6 +171,43 @@ speechSynth.onvoiceschanged = () => {
 // ==========================================
 // VOICE RECOGNITION (STT)
 // ==========================================
+function setAudioMode(mode) {
+  audioMode = mode;
+  
+  if (mode === 'MUTED') {
+    btnAudioToggle.innerText = 'MUTED';
+    btnAudioToggle.className = 'hud-btn glow-btn btn-danger';
+    speechSynth.cancel();
+    if (recognition) {
+      try { recognition.stop(); } catch(e) {}
+    }
+    document.getElementById('mic-status').innerText = '○ MUTED';
+    document.getElementById('mic-status').className = 'value muted-color';
+    waveActivity = 0.05;
+    addSystemLog('SYS', 'Voice loops disarmed. Conversational flow offline.');
+  } else if (mode === 'STANDBY') {
+    btnAudioToggle.innerText = 'STANDBY';
+    btnAudioToggle.className = 'hud-btn glow-btn btn-warning';
+    document.getElementById('mic-status').innerText = '● STANDBY';
+    document.getElementById('mic-status').className = 'value warning-color';
+    waveActivity = 0.08;
+    if (recognition) {
+      try { recognition.start(); } catch(e) {}
+    }
+    addSystemLog('SYS', 'Voice loops in standby. Awaiting wake phrase "Wake up Jarvis".');
+  } else if (mode === 'AWAKE') {
+    btnAudioToggle.innerText = 'AWAKE';
+    btnAudioToggle.className = 'hud-btn glow-btn btn-ok';
+    document.getElementById('mic-status').innerText = '● LIVE';
+    document.getElementById('mic-status').className = 'value live-color';
+    waveActivity = 0.25;
+    if (recognition) {
+      try { recognition.start(); } catch(e) {}
+    }
+    addSystemLog('SYS', 'Voice loops active. Conversational flow online.');
+  }
+}
+
 function initSpeechRecognition() {
   if (!('webkitSpeechRecognition' in window)) {
     addSystemLog('ERROR', 'Webkit Speech Recognition is not supported in this environment.');
@@ -183,16 +220,45 @@ function initSpeechRecognition() {
   recognition.lang = currentLanguage;
 
   recognition.onstart = () => {
-    document.getElementById('mic-status').innerText = '● LIVE';
-    document.getElementById('mic-status').className = 'value live-color';
-    waveActivity = 0.25; // Listening noise
-    addSystemLog('MIC', 'Microphone connection armed. Wake-word detection active.');
+    if (audioMode === 'STANDBY') {
+      document.getElementById('mic-status').innerText = '● STANDBY';
+      document.getElementById('mic-status').className = 'value warning-color';
+      waveActivity = 0.08;
+      addSystemLog('MIC', 'Microphone armed. Awaiting wake phrase "Wake up Jarvis".');
+    } else if (audioMode === 'AWAKE') {
+      document.getElementById('mic-status').innerText = '● LIVE';
+      document.getElementById('mic-status').className = 'value live-color';
+      waveActivity = 0.25;
+      addSystemLog('MIC', 'Microphone active. Voice loop open.');
+    }
   };
 
   recognition.onresult = (event) => {
     const result = event.results[event.results.length - 1];
     if (result.isFinal) {
       const speechText = result[0].transcript.trim();
+      const lowerText = speechText.toLowerCase().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g,"");
+      
+      if (audioMode === 'STANDBY') {
+        if (lowerText.includes('wake up jarvis') || lowerText.includes('wake up')) {
+          setAudioMode('AWAKE');
+          addSystemLog('SYS', 'Wake word detected. Initializing JARVIS systems...');
+          renderUserMessage(speechText);
+          speakText("Systems operational. I am listening, sir.");
+          renderAgentResponse("Systems operational. I am listening, sir.", "Systems operational. I am listening, sir.");
+        }
+        return;
+      }
+      
+      if (lowerText === 'go to sleep' || lowerText === 'sleep' || lowerText === 'stand down') {
+        setAudioMode('STANDBY');
+        addSystemLog('SYS', 'Sleep word detected. Standing down...');
+        renderUserMessage(speechText);
+        speakText("Standing down. I am in standby mode.");
+        renderAgentResponse("Standing down. I am in standby mode.", "Standing down. I am in standby mode.");
+        return;
+      }
+      
       addSystemLog('MIC', `Transcribed: "${speechText}"`);
       
       // Interrupt check: if agent is currently speaking, barge-in!
@@ -221,42 +287,31 @@ function initSpeechRecognition() {
   };
 
   recognition.onend = () => {
-    // If not manually muted, automatically restart
-    if (!isAudioMuted) {
-      recognition.start();
+    if (audioMode !== 'MUTED') {
+      try { recognition.start(); } catch (e) {}
     } else {
       document.getElementById('mic-status').innerText = '○ MUTED';
       document.getElementById('mic-status').className = 'value muted-color';
       waveActivity = 0.05;
     }
   };
+  
+  // Try to start on initialization
+  try {
+    recognition.start();
+  } catch (e) {}
 }
 
 initSpeechRecognition();
 
-// Mute/Unmute audio loop
+// Cycle audio modes: STANDBY -> AWAKE -> MUTED -> STANDBY
 btnAudioToggle.addEventListener('click', () => {
-  isAudioMuted = !isAudioMuted;
-  
-  if (isAudioMuted) {
-    btnAudioToggle.innerText = 'MUTED';
-    btnAudioToggle.className = 'hud-btn glow-btn btn-danger';
-    speechSynth.cancel();
-    if (recognition) {
-      recognition.stop();
-    }
-    addSystemLog('SYS', 'Voice loops disarmed. Conversational flow offline.');
+  if (audioMode === 'MUTED') {
+    setAudioMode('STANDBY');
+  } else if (audioMode === 'STANDBY') {
+    setAudioMode('AWAKE');
   } else {
-    btnAudioToggle.innerText = 'LIVE MIC';
-    btnAudioToggle.className = 'hud-btn glow-btn btn-ok';
-    if (recognition) {
-      try {
-        recognition.start();
-      } catch (e) {
-        console.log("Already running recognition");
-      }
-    }
-    addSystemLog('SYS', 'Voice loops armed. Awaiting vocal command.');
+    setAudioMode('MUTED');
   }
 });
 
