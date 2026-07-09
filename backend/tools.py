@@ -3,7 +3,6 @@ import subprocess
 import webbrowser
 import psutil
 import pyautogui
-import win32clipboard # Included in standard python or we can use pyautogui/tkinter fallbacks
 import ctypes
 import json
 
