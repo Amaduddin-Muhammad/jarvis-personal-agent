@@ -64,7 +64,7 @@ class JarvisOrchestrator:
     def get_system_message(self):
         facts = self.memory.get_all_facts()
         memory_str = "\n".join([f"- {f}" for f in facts]) if facts else "No long-term facts recorded yet."
-        prompt = SYSTEM_PROMPT.format(memory_context=memory_str)
+        prompt = SYSTEM_PROMPT.replace("{memory_context}", memory_str)
         return SystemMessage(content=prompt)
 
     def parse_json_safely(self, text):
@@ -98,9 +98,14 @@ class JarvisOrchestrator:
             }
 
     def process_query(self, user_text, socket_sender_func):
+        print(f"AGENT START: process_query for user_text: {user_text}", flush=True)
         # 1. Load history & build prompt
         history = self.memory.get_recent_history(limit=12)
-        messages = [self.get_system_message()]
+        print(f"AGENT: loaded history rows: {len(history)}", flush=True)
+        print("AGENT: calling get_system_message...", flush=True)
+        sys_msg = self.get_system_message()
+        print("AGENT: get_system_message done", flush=True)
+        messages = [sys_msg]
         
         for msg in history:
             if msg["role"] == "user":
@@ -111,7 +116,9 @@ class JarvisOrchestrator:
         messages.append(HumanMessage(content=user_text))
         
         # Log incoming
+        print("AGENT: calling save_message...", flush=True)
         self.memory.save_message("user", user_text)
+        print("AGENT: saved user message in db", flush=True)
 
         # 2. Invoke NVIDIA LLM
         socket_sender_func({
@@ -123,6 +130,7 @@ class JarvisOrchestrator:
         raw_response = ""
         reasoning_content = ""
 
+        print("AGENT: invoking stream...", flush=True)
         try:
             for chunk in self.client.stream(messages):
                 # If thinking tokens are present, forward them to the UI as logs
@@ -134,8 +142,8 @@ class JarvisOrchestrator:
                         "level": "INFO",
                         "message": f"[Thinking] {rc}"
                     })
-                
                 raw_response += chunk.content
+            print(f"AGENT: stream finished. Raw response: {raw_response}", flush=True)
         except Exception as e:
             error_msg = f"NVIDIA Endpoints Error: {str(e)}"
             socket_sender_func({"type": "log", "level": "ERROR", "message": error_msg})

@@ -56,7 +56,7 @@ prev_net_io = psutil.net_io_counters()
 prev_time = time.time()
 
 # ==========================================
-// BACKGROUND SYSTEM MONITOR THREAD
+# BACKGROUND SYSTEM MONITOR THREAD
 # ==========================================
 async def monitor_vitals_loop():
     global prev_net_io, prev_time
@@ -140,8 +140,9 @@ async def execute_agent_loop(websocket: WebSocket, user_text: str, depth: int = 
         # We can't await inside a synchronous callback, so we create a task
         asyncio.create_task(websocket.send_json(msg_dict))
 
-    # Process query
-    parsed = orchestrator.process_query(user_text, socket_logger)
+    # Process query in executor thread
+    loop = asyncio.get_running_loop()
+    parsed = await loop.run_in_executor(None, orchestrator.process_query, user_text, socket_logger)
     
     # Send display & speak output to client
     await websocket.send_json({
@@ -255,6 +256,7 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
+            print(f"WS RECEIVED: {data}", flush=True)
             payload = json.loads(data)
             p_type = payload.get("type")
             
@@ -288,7 +290,7 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        print(f"WS error: {e}")
+        print(f"WS error: {e}", flush=True)
         manager.disconnect(websocket)
 
 # FastAPI startup hook to trigger vitals monitoring task
