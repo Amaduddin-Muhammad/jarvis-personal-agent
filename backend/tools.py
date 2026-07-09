@@ -185,9 +185,46 @@ def system_stats():
 )
 def app_launch(app_name):
     try:
-        # Launch asynchronously in Windows without blocking the backend
-        subprocess.Popen(app_name, shell=True, start_new_session=True)
-        return {"status": "success", "message": f"Dispatched launch command for: {app_name}"}
+        app_lower = app_name.lower().strip()
+        common_paths = {
+            "chrome": [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+            ],
+            "edge": [
+                r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+            ],
+            "vscode": [
+                os.path.expandvars(r"%USERPROFILE%\AppData\Local\Programs\Microsoft VS Code\Code.exe")
+            ],
+            "code": [
+                os.path.expandvars(r"%USERPROFILE%\AppData\Local\Programs\Microsoft VS Code\Code.exe")
+            ],
+            "spotify": [
+                os.path.expandvars(r"%APPDATA%\Spotify\Spotify.exe"),
+                os.path.expandvars(r"%USERPROFILE%\AppData\Local\Microsoft\WindowsApps\Spotify.exe")
+            ],
+            "discord": [
+                os.path.expandvars(r"%USERPROFILE%\AppData\Local\Discord\Update.exe")
+            ]
+        }
+        
+        target_path = None
+        if app_lower in common_paths:
+            for path in common_paths[app_lower]:
+                if os.path.exists(path):
+                    target_path = path
+                    break
+                    
+        if app_lower == "discord" and target_path:
+            cmd = f'"{target_path}" --processStart Discord.exe'
+        elif target_path:
+            cmd = f'"{target_path}"'
+        else:
+            cmd = f'start "" "{app_name}"'
+            
+        subprocess.Popen(cmd, shell=True)
+        return {"status": "success", "message": f"Successfully launched: {app_name}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
