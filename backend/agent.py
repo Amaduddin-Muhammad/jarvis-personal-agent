@@ -120,22 +120,56 @@ class JarvisOrchestrator:
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
 
+        # Step 1: Try direct parse with strict=False (allows unescaped control chars like newlines)
         try:
-            return json.loads(cleaned)
+            return json.loads(cleaned, strict=False)
         except Exception:
-            match = re.search(r'\{[\s\S]*\}', cleaned)
-            if match:
-                try:
-                    return json.loads(match.group(0))
-                except Exception:
-                    pass
+            pass
 
-            return {
-                "thought": "Parser error: response was not valid JSON.",
-                "speak": "I had a formatting error. Please try again.",
-                "display": f"Failed to parse JSON. Raw Output:\n\n```\n{text}\n```",
-                "tool_call": None
-            }
+        # Step 2: Try brace balancing to extract a clean JSON object block
+        start_idx = cleaned.find('{')
+        if start_idx != -1:
+            balance = 0
+            in_string = False
+            escape = False
+            for idx in range(start_idx, len(cleaned)):
+                char = cleaned[idx]
+                if escape:
+                    escape = False
+                    continue
+                if char == '\\':
+                    escape = True
+                    continue
+                if char == '"':
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if char == '{':
+                        balance += 1
+                    elif char == '}':
+                        balance -= 1
+                        if balance == 0:
+                            candidate = cleaned[start_idx:idx+1]
+                            try:
+                                return json.loads(candidate, strict=False)
+                            except Exception:
+                                pass
+
+        # Step 3: Regular Expression fallback
+        match = re.search(r'\{[\s\S]*\}', cleaned)
+        if match:
+            try:
+                return json.loads(match.group(0), strict=False)
+            except Exception:
+                pass
+
+        return {
+            "thought": "Parser error: response was not valid JSON.",
+            "speak": "I had a formatting error. Please try again.",
+            "display": f"Failed to parse JSON. Raw Output:\n\n```\n{text}\n```",
+            "tool_call": None
+        }
+
 
     def process_query(self, user_text, socket_sender_func):
         """
@@ -215,7 +249,8 @@ class JarvisOrchestrator:
 
             tool_name = tool_call.get("name", "")
             tool_args = tool_call.get("args", {})
-            tool_rationale = tool_call.get("rationale", "")
+            tool_rationale = tool_call.get("rationale") or parsed.get("rationale") or ""
+
 
             # ── Emit ACT step to HUD ──
             socket_sender_func({
