@@ -258,8 +258,29 @@ function speakText_fn(text) {
 
 
 // ==========================================
-// TTS — PREMIUM VOICE SELECTION
+// TTS — PREMIUM VOICE SELECTION (ENGLISH/URDU)
 // ==========================================
+function containsUrdu(text) {
+  return /[\u0600-\u06FF]/.test(text);
+}
+
+function resolveBestUrduVoice() {
+  const voices = speechSynth.getVoices();
+  if (!voices.length) return null;
+  const priorities = [
+    v => v.name.includes('Asma') && v.lang.startsWith('ur'),
+    v => v.name.includes('Uzma') && v.lang.startsWith('ur'),
+    v => (v.lang === 'ur-PK' || v.lang === 'ur_PK'),
+    v => v.lang.startsWith('ur'),
+    v => v.name.toLowerCase().includes('urdu') || v.name.includes('اردو'),
+  ];
+  for (const test of priorities) {
+    const found = voices.find(test);
+    if (found) return found;
+  }
+  return null;
+}
+
 function resolveBestVoice() {
   const voices = speechSynth.getVoices();
   if (!voices.length) return null;
@@ -306,10 +327,23 @@ function speakText(text) {
   speechSynth.cancel();
 
   activeUtterance = new SpeechSynthesisUtterance(text);
-  activeUtterance.voice = preferredVoice || resolveBestVoice();
   activeUtterance.rate  = voiceSpeed;
   activeUtterance.pitch = voicePitch;
-  activeUtterance.lang  = currentLanguage;
+
+  const isUrdu = containsUrdu(text) || currentLanguage.startsWith('ur');
+  if (isUrdu) {
+    const urduVoice = resolveBestUrduVoice();
+    if (urduVoice) {
+      activeUtterance.voice = urduVoice;
+      activeUtterance.lang = urduVoice.lang;
+      addSystemLog('SYS', `Urdu voice selected: ${urduVoice.name}`);
+    } else {
+      activeUtterance.lang = 'ur-PK';
+    }
+  } else {
+    activeUtterance.voice = preferredVoice || resolveBestVoice();
+    activeUtterance.lang  = currentLanguage;
+  }
 
   activeUtterance.onstart = () => {
     setAgentState('SPEAKING');
