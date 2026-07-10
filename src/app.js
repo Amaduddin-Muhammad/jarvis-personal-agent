@@ -15,6 +15,7 @@ let recognitionRunning = false;        // Tracks if recognition is active
 let preferredVoice = null;             // Best TTS voice, resolved on load
 let voiceSpeed = 1.05;
 let voicePitch = 0.95;
+let ttsAudio = null;                   // Holds the Google Translate TTS Audio instance
 const VAD_SILENCE_MS = 1200;           // ms of silence before auto-send
 const FILLER_WORDS = new Set(['um','uh','hmm','hm','ah','er','uhh','umm','mm']);
 const MIN_CONFIDENCE = 0.40;           // Reject transcripts below this confidence
@@ -313,61 +314,147 @@ speechSynth.onvoiceschanged = () => {
 // Eagerly resolve in case voices already loaded
 preferredVoice = resolveBestVoice();
 
-function speakText(text) {
-  if (audioMode === 'MUTED') return;
-  if (!text || !text.trim()) return;
-
-  // Strip markdown code blocks for TTS
-  text = text.replace(/```[\s\S]*?```/g, ', code snippet,');
-  // Strip markdown bold/italic markers
-  text = text.replace(/[*_`#>]/g, '');
-  // Trim to 300 chars max for voice — keeps it snappy
-  if (text.length > 300) text = text.substring(0, 297) + '...';
-
+function playGoogleTTS(text, lang) {
   speechSynth.cancel();
-
-  activeUtterance = new SpeechSynthesisUtterance(text);
-  activeUtterance.rate  = voiceSpeed;
-  activeUtterance.pitch = voicePitch;
-
-  const isUrdu = containsUrdu(text) || currentLanguage.startsWith('ur');
-  if (isUrdu) {
-    const urduVoice = resolveBestUrduVoice();
-    if (urduVoice) {
-      activeUtterance.voice = urduVoice;
-      activeUtterance.lang = urduVoice.lang;
-      addSystemLog('SYS', `Urdu voice selected: ${urduVoice.name}`);
-    } else {
-      activeUtterance.lang = 'ur-PK';
-    }
-  } else {
-    activeUtterance.voice = preferredVoice || resolveBestVoice();
-    activeUtterance.lang  = currentLanguage;
+  if (ttsAudio) {
+    try { ttsAudio.pause(); } catch(e) {}
+    ttsAudio = null;
   }
+
+  // Clean text for speech
+  let cleanText = text.replace(/```[\s\S]*?```/g, ', code snippet,');
+  cleanText = cleanText.replace(/[*_`#>]/g, '');
+  if (cleanText.length > 250) cleanText = cleanText.substring(0, 247) + '...';
+
+  const encodedText = encodeURIComponent(cleanText);
+  const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodedText}`;
+
+  ttsAudio = new Audio(url);
+  setAgentState('SPEAKING');
+  duckMic(true);
+  addSystemLog('SYS', 'JARVIS speaking (Natural Online Urdu Core) — mic ducked.');
+
+  ttsAudio.onended = () => {
+    ttsAudio = null;
+    setAgentState('IDLE');
+    duckMic(false);
+    addSystemLog('MIC', 'Speech complete — mic resumed.');
+  };
+
+  ttsAudio.onerror = (e) => {
+    console.error('Google TTS fallback failed:', e);
+    ttsAudio = null;
+    nativeUrduSpeechFallback(text);
+  };
+
+  ttsAudio.play().catch(err => {
+    console.error('TTS playback failure:', err);
+    ttsAudio = null;
+    nativeUrduSpeechFallback(text);
+  });
+}
+
+function nativeUrduSpeechFallback(text) {
+  addSystemLog('WARN', 'Google TTS failed. Using native browser speech engine...');
+  activeUtterance = new SpeechSynthesisUtterance(text);
+  activeUtterance.lang = 'ur-PK';
+  activeUtterance.rate = voiceSpeed;
+  activeUtterance.pitch = voicePitch;
 
   activeUtterance.onstart = () => {
     setAgentState('SPEAKING');
-    // Duck mic: pause recognition while speaking to prevent feedback
     duckMic(true);
-    addSystemLog('SYS', 'JARVIS speaking — mic ducked.');
   };
 
   activeUtterance.onend = () => {
     activeUtterance = null;
     setAgentState('IDLE');
-    // Unduck mic: resume recognition after speaking
     duckMic(false);
-    addSystemLog('MIC', 'Speech complete — mic resumed.');
   };
 
   activeUtterance.onerror = (e) => {
-    console.error('TTS error:', e);
     activeUtterance = null;
     setAgentState('IDLE');
     duckMic(false);
   };
 
   speechSynth.speak(activeUtterance);
+}
+
+function speakText(text) {
+  if (audioMode === 'MUTED') return;
+  if (!text || !text.trim()) return;
+
+  speechSynth.cancel();
+  if (ttsAudio) {
+    try { ttsAudio.pause(); } catch(e) {}
+    ttsAudio = null;
+  }
+
+  const isUrdu = containsUrdu(text) || currentLanguage.startsWith('ur');
+  if (isUrdu) {
+    const urduVoice = resolveBestUrduVoice();
+    if (urduVoice) {
+      // High-quality local/system Urdu voice exists! Use it natively
+      activeUtterance = new SpeechSynthesisUtterance(text);
+      activeUtterance.voice = urduVoice;
+      activeUtterance.lang = urduVoice.lang;
+      activeUtterance.rate  = voiceSpeed;
+      activeUtterance.pitch = voicePitch;
+
+      activeUtterance.onstart = () => {
+        setAgentState('SPEAKING');
+        duckMic(true);
+        addSystemLog('SYS', `JARVIS speaking (System Urdu: ${urduVoice.name}) — mic ducked.`);
+      };
+
+      activeUtterance.onend = () => {
+        activeUtterance = null;
+        setAgentState('IDLE');
+        duckMic(false);
+        addSystemLog('MIC', 'Speech complete — mic resumed.');
+      };
+
+      activeUtterance.onerror = (e) => {
+        activeUtterance = null;
+        setAgentState('IDLE');
+        duckMic(false);
+      };
+
+      speechSynth.speak(activeUtterance);
+    } else {
+      // No local Urdu voice. Use high-quality Google Translate TTS fallback
+      playGoogleTTS(text, 'ur');
+    }
+  } else {
+    // English/other languages
+    activeUtterance = new SpeechSynthesisUtterance(text);
+    activeUtterance.voice = preferredVoice || resolveBestVoice();
+    activeUtterance.rate  = voiceSpeed;
+    activeUtterance.pitch = voicePitch;
+    activeUtterance.lang  = currentLanguage;
+
+    activeUtterance.onstart = () => {
+      setAgentState('SPEAKING');
+      duckMic(true);
+      addSystemLog('SYS', 'JARVIS speaking — mic ducked.');
+    };
+
+    activeUtterance.onend = () => {
+      activeUtterance = null;
+      setAgentState('IDLE');
+      duckMic(false);
+      addSystemLog('MIC', 'Speech complete — mic resumed.');
+    };
+
+    activeUtterance.onerror = (e) => {
+      activeUtterance = null;
+      setAgentState('IDLE');
+      duckMic(false);
+    };
+
+    speechSynth.speak(activeUtterance);
+  }
 }
 
 // ==========================================
@@ -413,6 +500,10 @@ function setAudioMode(mode) {
     btnAudioToggle.innerText = 'MUTED';
     btnAudioToggle.className = 'hud-btn glow-btn btn-danger';
     speechSynth.cancel();
+    if (ttsAudio) {
+      try { ttsAudio.pause(); } catch(e) {}
+      ttsAudio = null;
+    }
     stopRecognition();
     isMicDucked = false;
     clearInterimDisplay();
@@ -458,9 +549,13 @@ function commitTranscript(text) {
   clearInterimDisplay();
   if (!text || text.trim().length < 2) return;
 
-  // Barge-in: interrupt JARVIS if it is currently speaking
-  if (speechSynth.speaking) {
+  // Barge-in: interrupt JARVIS if it is currently speaking (native or online fallback)
+  if (speechSynth.speaking || (ttsAudio && !ttsAudio.paused)) {
     speechSynth.cancel();
+    if (ttsAudio) {
+      try { ttsAudio.pause(); } catch(e) {}
+      ttsAudio = null;
+    }
     duckMic(false);
     addSystemLog('SYS', 'Barge-in: interrupting JARVIS speech.');
   }
@@ -1016,9 +1111,11 @@ function drawWaveform() {
   const height = waveformCanvas.height;
   const midY   = height / 2;
 
+  const isSpeaking = speechSynth.speaking || (ttsAudio && !ttsAudio.paused);
+
   // ── Determine amplitude source ──
   let amplitude;
-  if (speechSynth.speaking) {
+  if (isSpeaking) {
     // TTS speaking: animate with a rapid golden oscillation
     amplitude = (0.5 + 0.4 * Math.abs(Math.sin(wavePhase * 6))) * (height / 2.5);
     ctx.strokeStyle = '#ffb84d';
@@ -1052,7 +1149,7 @@ function drawWaveform() {
   ctx.stroke();
 
   // ── Secondary cyan ghost wave (only when listening) ──
-  if (audioMode !== 'MUTED' && !speechSynth.speaking) {
+  if (audioMode !== 'MUTED' && !isSpeaking) {
     ctx.strokeStyle = '#3ad6ff';
     ctx.shadowColor  = '#3ad6ff';
     ctx.shadowBlur   = 4;
@@ -1071,7 +1168,7 @@ function drawWaveform() {
   }
 
   // Advance phase
-  wavePhase += speechSynth.speaking ? 0.14 : (audioMode === 'MUTED' ? 0.015 : 0.07);
+  wavePhase += isSpeaking ? 0.14 : (audioMode === 'MUTED' ? 0.015 : 0.07);
 
   waveAnimationId = requestAnimationFrame(drawWaveform);
 }
