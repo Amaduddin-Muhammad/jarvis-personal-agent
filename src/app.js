@@ -164,6 +164,13 @@ function setAgentState(state) {
   const s = stateMap[state] || stateMap['IDLE'];
   el.textContent = s.text;
   el.className = `value ${s.cls}`;
+
+  // Automatically duck mic when agent is active (thinking, acting, speaking)
+  if (state === 'THINKING' || state === 'ACTING' || state === 'SPEAKING') {
+    duckMic(true);
+  } else if (state === 'IDLE') {
+    duckMic(false);
+  }
 }
 
 // ==========================================
@@ -632,12 +639,21 @@ function renderAgentResponse(content, speakTextContent) {
     speakText(content.replace(/```[\s\S]*?```/g, "[code snippet]").substring(0, 150));
   }
 
-  // Auto-detect and render any image file:// URLs embedded in the display content
-  const imgMatches = content.match(/file:\/\/\/[^\s"']+\.(png|jpg|jpeg|webp)/gi);
+  // Auto-detect and render any image URLs embedded in the display content
+  const imgMatches = content.match(/\/output\/images\/[^\s"']+\.(?:png|jpg|jpeg|webp)/gi);
   if (imgMatches) {
     imgMatches.forEach(fileUrl => {
       const fname = fileUrl.split('/').pop();
       renderImageCard(fileUrl, fname);
+    });
+  }
+
+  // Auto-detect and render any document URLs embedded in the display content
+  const docMatches = content.match(/\/output\/documents\/[^\s"']+\.docx/gi);
+  if (docMatches) {
+    docMatches.forEach(fileUrl => {
+      const fname = fileUrl.split('/').pop();
+      renderDocumentCard(fileUrl, fname);
     });
   }
 }
@@ -693,7 +709,13 @@ function openImageFullscreen(fileUrl) {
 }
 
 function openDocFile(fileUrl) {
-  const path = fileUrl.replace('file:///', '').replace(/\//g, '\\');
+  let path = fileUrl;
+  if (path.startsWith('file:///')) {
+    path = path.replace('file:///', '');
+  } else if (path.startsWith('/')) {
+    path = path.substring(1);
+  }
+  path = path.replace(/\//g, '\\');
   if (socket && socket.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: 'user_message', content: `/open ${path}`, is_voice: false }));
   }

@@ -129,8 +129,7 @@ def generate_image(
             }
 
     path = _save_image_bytes(img_bytes, filename)
-    # Return a file:// URL for the HUD to display inline
-    file_url = "file:///" + path.replace("\\", "/")
+    file_url = f"/output/images/{os.path.basename(path)}"
 
     return {
         "status": "success",

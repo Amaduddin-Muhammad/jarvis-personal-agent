@@ -7,6 +7,7 @@ import psutil
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from backend.memory import MemoryCore
 from backend.agent import JarvisOrchestrator
 from backend.tools import TOOLS_REGISTRY, execute_tool_by_name, inject_cores
@@ -15,6 +16,10 @@ from backend.reminders import RemindersCore
 from backend.proactive import ProactiveAgent
 
 app = FastAPI(title="JARVIS Server Core")
+
+# Mount /output directory for static access to generated images & docs
+app.mount("/output", StaticFiles(directory="output"), name="output")
+
 
 # Enable CORS for local GUI connection
 app.add_middleware(
@@ -281,7 +286,19 @@ async def websocket_endpoint(websocket: WebSocket):
             
             if p_type == "user_message":
                 content = payload.get("content", "")
-                await execute_agent_loop(websocket, content, depth=0)
+                if content.startswith("/open "):
+                    file_path = content[6:].strip()
+                    await send_log(websocket, "OK", f"Direct command: opening file '{os.path.basename(file_path)}'")
+                    # Run the open file tool directly in the executor
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(None, execute_tool_by_name, "document.open_file", {"path": file_path})
+                    await websocket.send_json({
+                        "type": "log",
+                        "level": "OK" if result.get("status") == "success" else "ERROR",
+                        "message": result.get("message")
+                    })
+                else:
+                    await execute_agent_loop(websocket, content, depth=0)
                 
             elif p_type == "system_command":
                 command = payload.get("command")

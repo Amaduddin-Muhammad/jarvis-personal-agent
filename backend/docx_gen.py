@@ -333,7 +333,7 @@ def create_word_document(
         "status": "success",
         "path": output_path,
         "filename": filename,
-        "file_url": "file:///" + output_path.replace("\\", "/"),
+        "file_url": f"/output/documents/{filename}",
         "sections": len(sections),
         "message": f"Word document created: {filename}"
     }

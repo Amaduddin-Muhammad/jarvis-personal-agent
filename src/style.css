@@ -1222,4 +1222,20 @@ body {
   gap: 8px;
 }
 
+/* Enable copy/paste (text selection) on readable content containers */
+.msg, 
+.msg .content, 
+.thought-step, 
+.memory-fact, 
+.log-row, 
+.log-row .desc,
+pre, 
+code, 
+input, 
+textarea {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+
 
