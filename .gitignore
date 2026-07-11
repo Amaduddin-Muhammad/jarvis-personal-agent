@@ -1,6 +1,9 @@
 node_modules/
-backend/.venv/
-backend/jarvis.db
+**/node_modules/
+backend-ai-core/.venv/
+backend-ai-core/jarvis.db
+backend-gateway/dist/
+frontend/.next/
 *.png
 *.log
 .env
