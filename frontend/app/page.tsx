@@ -61,7 +61,14 @@ export default function JarvisDashboard() {
   const [vitals, setVitals] = useState<Vitals>({ cpu: 12, ram: 45, battery: 100, netUp: 0.1, netDown: 1.2 });
 
   // Chat + activity
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    {
+      id: 'welcome',
+      sender: 'JARVIS',
+      text: 'Systems online. All diagnostic checks completed. J.A.R.V.I.S. is ready to assist you. Ask me anything or say "Jarvis" to voice control.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
+    }
+  ]);
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
 
   // Input / mic
@@ -326,11 +333,21 @@ export default function JarvisDashboard() {
       }
     };
 
-    rec.onerror = () => { recognitionRunningRef.current = false; };
+    rec.onerror = (e: any) => {
+      recognitionRunningRef.current = false;
+      console.error('Speech recognition error:', e.error);
+      if (e.error === 'not-allowed') {
+        pushActivity('Microphone access denied. Please allow microphone permissions in Windows settings.', 'ERROR');
+      } else if (e.error === 'no-speech') {
+        // Safe timeout, ignore
+      } else {
+        pushActivity(`Mic Error: ${e.error || 'Unknown error'}`, 'WARN');
+      }
+    };
 
     recognitionRef.current = rec;
     try { rec.start(); } catch { /**/ }
-  }, [cancelSpeech, commitVoiceQuery]);
+  }, [cancelSpeech, commitVoiceQuery, pushActivity]);
 
   // Store latest ref so onend callbacks can call it
   useEffect(() => { startRecognitionRef.current = startRecognition; }, [startRecognition]);
@@ -457,11 +474,22 @@ export default function JarvisDashboard() {
     return () => { socket.disconnect(); };
   }, [pushActivity, addMessage, speakResponse, duckMic]);
 
-  // Auto-start voice recognition on mount
+  // Auto-start voice recognition on mount & verify microphone permission
   useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then((stream) => {
+          pushActivity('Microphone hardware verified & active.', 'OK');
+          stream.getTracks().forEach(track => track.stop());
+        })
+        .catch((err) => {
+          console.error('Microphone hardware check failed:', err);
+          pushActivity(`Microphone Initialization Error: ${err.name || 'AccessDenied'}. Please verify recording devices are enabled in Windows settings.`, 'ERROR');
+        });
+    }
     const id = setTimeout(() => startRecognitionRef.current(), 800);
     return () => clearTimeout(id);
-  }, []);
+  }, [pushActivity]);
 
   // Auto-scroll chat
   useEffect(() => {
