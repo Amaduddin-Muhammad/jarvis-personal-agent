@@ -30,9 +30,9 @@ export default function SystemPanel({ cpu, ram, battery, netUp, netDown }: Syste
     >
       <div className="panel-label">System</div>
 
-      <RadialGauge metric="cpu" value={cpu} color="var(--glacier-400)" label="CPU" />
-      <RadialGauge metric="ram" value={ram} color="var(--amber-400)" label="Memory" />
-      <RadialGauge metric="battery" value={battery} color="var(--glacier-400)" label="Battery" />
+      <RadialGauge value={cpu} color="var(--glacier-400)" label="CPU" />
+      <RadialGauge value={ram} color="var(--amber-400)" label="Memory" />
+      <RadialGauge value={battery} color="var(--glacier-400)" label="Battery" />
 
       <ul className="sys-list">
         <li>

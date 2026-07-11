@@ -47,6 +47,56 @@ interface ConfirmGate {
   rationale: string;
 }
 
+interface SpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+interface SpeechRecognitionErrorEvent {
+  error: string;
+}
+
+interface ISpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  start: () => void;
+  abort: () => void;
+}
+
+interface WindowWithSpeech extends Window {
+  SpeechRecognition?: new () => ISpeechRecognition;
+  webkitSpeechRecognition?: new () => ISpeechRecognition;
+}
+
+interface WindowWithAudioContext extends Window {
+  webkitAudioContext?: typeof AudioContext;
+}
+
+interface VitalsPayload {
+  data?: {
+    cpu?: number;
+    ram?: number;
+    battery?: number;
+    network?: {
+      sent_mb?: number;
+      recv_kb?: number;
+    };
+  };
+}
+
 // ─────────────────────────────────────────────
 // Main Component
 // ─────────────────────────────────────────────
@@ -90,7 +140,7 @@ export default function JarvisDashboard() {
   const socketRef = useRef<Socket | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<ISpeechRecognition | null>(null);
   const recognitionRunningRef = useRef(false);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const isMicDuckedRef = useRef(false);
@@ -160,7 +210,7 @@ export default function JarvisDashboard() {
 
   const setupAudioAnalyzer = useCallback((audio: HTMLAudioElement) => {
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = window.AudioContext || (window as unknown as WindowWithAudioContext).webkitAudioContext;
       if (!AudioCtx) return;
       const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
@@ -296,7 +346,7 @@ export default function JarvisDashboard() {
 
   const startRecognition = useCallback(() => {
     if (isMutedRef.current || recognitionRunningRef.current || isMicDuckedRef.current) return;
-    const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechClass = (window as unknown as WindowWithSpeech).SpeechRecognition || (window as unknown as WindowWithSpeech).webkitSpeechRecognition;
     if (!SpeechClass) return;
 
     // Reset restart flag on fresh launch
@@ -312,11 +362,12 @@ export default function JarvisDashboard() {
       setVoiceState('listening');
     };
 
-    rec.onresult = (event: any) => {
+    rec.onresult = (event: SpeechRecognitionEvent) => {
       cancelSpeech();
       let final = '';
       let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
+      const resultsLen = event.results.length;
+      for (let i = event.resultIndex; i < resultsLen; ++i) {
         const t = event.results[i][0].transcript;
         if (event.results[i].isFinal) final += t;
         else interim += t;
@@ -337,7 +388,7 @@ export default function JarvisDashboard() {
       }
     };
 
-    rec.onerror = (e: any) => {
+    rec.onerror = (e: SpeechRecognitionErrorEvent) => {
       recognitionRunningRef.current = false;
       console.error('Speech recognition error:', e.error);
       
@@ -458,7 +509,7 @@ export default function JarvisDashboard() {
       pushActivity(data.message, data.level);
     });
 
-    socket.on('memory', (_data: { facts: string[] }) => {
+    socket.on('memory', () => {
       pushActivity('Memory updated.', 'SYS');
     });
 
@@ -469,7 +520,7 @@ export default function JarvisDashboard() {
       pushActivity(`AUTH REQUIRED: ${data.tool}`, 'WARN');
     });
 
-    socket.on('vitals', (payload: any) => {
+    socket.on('vitals', (payload: VitalsPayload) => {
       if (payload?.data) {
         setVitals({
           cpu: payload.data.cpu ?? 0,

@@ -7,11 +7,34 @@ interface StatusBarProps {
   voiceState: string;
 }
 
+interface ElectronWindow extends Window {
+  electronAPI?: {
+    minimize: () => void;
+    maximize: () => void;
+    close: () => void;
+    quit: () => void;
+  };
+}
+
+interface BatteryManager {
+  level: number;
+  charging: boolean;
+  addEventListener: (type: string, listener: () => void) => void;
+}
+
+interface NavigatorWithBattery extends Navigator {
+  getBattery?: () => Promise<BatteryManager>;
+}
+
 export default function StatusBar({ voiceState }: StatusBarProps) {
   const [time, setTime] = useState('');
   const [battery, setBattery] = useState<number | null>(null);
   const [charging, setCharging] = useState(false);
-  const [isElectron, setIsElectron] = useState(false);
+
+  // Lazy state initializer to avoid calling setState synchronously inside useEffect
+  const [isElectron] = useState(() => {
+    return typeof window !== 'undefined' && !!(window as unknown as ElectronWindow).electronAPI;
+  });
 
   useEffect(() => {
     const tick = () => {
@@ -25,8 +48,9 @@ export default function StatusBar({ voiceState }: StatusBarProps) {
 
   // Read battery via Browser API if available
   useEffect(() => {
-    if (typeof navigator !== 'undefined' && 'getBattery' in navigator) {
-      (navigator as any).getBattery().then((bat: any) => {
+    const nav = navigator as unknown as NavigatorWithBattery;
+    if (typeof navigator !== 'undefined' && nav.getBattery) {
+      nav.getBattery().then((bat) => {
         setBattery(Math.round(bat.level * 100));
         setCharging(bat.charging);
         bat.addEventListener('levelchange', () => {
@@ -39,12 +63,17 @@ export default function StatusBar({ voiceState }: StatusBarProps) {
     }
   }, []);
 
-  // Detect Electron environment
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      setIsElectron(true);
-    }
-  }, []);
+  const handleMinimize = () => {
+    (window as unknown as ElectronWindow).electronAPI?.minimize();
+  };
+
+  const handleMaximize = () => {
+    (window as unknown as ElectronWindow).electronAPI?.maximize();
+  };
+
+  const handleClose = () => {
+    (window as unknown as ElectronWindow).electronAPI?.close();
+  };
 
   return (
     <div
@@ -128,7 +157,7 @@ export default function StatusBar({ voiceState }: StatusBarProps) {
         {isElectron && (
           <div style={{ display: 'flex', gap: 6, marginLeft: 8, alignItems: 'center' }}>
             <button
-              onClick={() => (window as any).electronAPI?.minimize()}
+              onClick={handleMinimize}
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -148,7 +177,7 @@ export default function StatusBar({ voiceState }: StatusBarProps) {
               <Minus size={13} />
             </button>
             <button
-              onClick={() => (window as any).electronAPI?.maximize()}
+              onClick={handleMaximize}
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -168,7 +197,7 @@ export default function StatusBar({ voiceState }: StatusBarProps) {
               <Square size={11} />
             </button>
             <button
-              onClick={() => (window as any).electronAPI?.close()}
+              onClick={handleClose}
               style={{
                 background: 'transparent',
                 border: 'none',

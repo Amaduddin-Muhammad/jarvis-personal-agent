@@ -3,14 +3,12 @@
 import React from 'react';
 
 interface RadialGaugeProps {
-  metric: string;
   value: number;        // 0–100
   color?: string;       // CSS color
   label: string;
 }
 
 export default function RadialGauge({
-  metric,
   value,
   color = 'var(--glacier-400)',
   label,
