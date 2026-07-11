@@ -538,6 +538,21 @@ export default function JarvisDashboard() {
     // Add welcome message only on client mount
     addMessage('JARVIS', 'Systems online. All diagnostic checks completed. J.A.R.V.I.S. is ready to assist you. Ask me anything or say "Jarvis" to voice control.');
 
+    // Browser diagnostics
+    if (typeof window !== 'undefined') {
+      const isBrave = !!(navigator as any).brave;
+      const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+      const isChrome = navigator.userAgent.toLowerCase().includes('chrome') && !navigator.userAgent.toLowerCase().includes('edg') && !isBrave;
+
+      if (isBrave) {
+        pushActivity('Brave detected: Google speech services are blocked by default. Enable "Use Google services for speech recognition" in brave://settings/system.', 'WARN');
+      } else if (isFirefox) {
+        pushActivity('Firefox detected: Web Speech API is experimental. Use Google Chrome or Microsoft Edge for best results.', 'WARN');
+      } else if (isChrome) {
+        pushActivity('Chrome detected: Speech recognition online (requires internet to connect to Google Cloud Speech servers).', 'SYS');
+      }
+    }
+
     if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then((stream) => {
