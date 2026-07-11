@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS Boot Core</title>
+  <style>
+    :root {
+      --bg-deep: #05070f;
+      --glow-cyan: #3ad6ff;
+      --glow-green: #33ff99;
+      --text-dim: #8b9fb4;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-deep);
+      color: #ffffff;
+      font-family: 'Consolas', 'Courier New', monospace;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    /* CRT SCANLINE EFFECTS */
+    .crt-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(16, 32, 24, 0) 50%, rgba(0, 0, 0, 0.4) 100%);
+      z-index: 9999;
+      pointer-events: none;
+    }
+
+    .scanlines {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%, 
+        rgba(0, 0, 0, 0.25) 50-70%
+      );
+      background-size: 100% 4px;
+      z-index: 9998;
+      pointer-events: none;
+      opacity: 0.8;
+    }
+
+    /* BOOT PANEL */
+    .boot-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+      text-align: center;
+      z-index: 10;
+    }
+
+    /* GLOWING SPIN RING */
+    .energy-ring {
+      position: relative;
+      width: 100px;
+      height: 100px;
+      border: 3px solid rgba(58, 214, 255, 0.1);
+      border-radius: 50%;
+      border-top-color: var(--glow-cyan);
+      animation: spin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+      box-shadow: 0 0 20px rgba(58, 214, 255, 0.25);
+    }
+
+    .energy-ring::after {
+      content: '';
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      right: 5px;
+      bottom: 5px;
+      border: 2px solid rgba(51, 255, 153, 0.05);
+      border-radius: 50%;
+      border-bottom-color: var(--glow-green);
+      animation: spin 2.5s linear infinite reverse;
+    }
+
+    /* TYPING TEXT */
+    .boot-title {
+      font-size: 0.85rem;
+      letter-spacing: 0.2em;
+      color: var(--glow-cyan);
+      text-shadow: 0 0 10px rgba(58, 214, 255, 0.5);
+      font-weight: bold;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .boot-status {
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      color: var(--text-dim);
+      max-width: 480px;
+      line-height: 1.6;
+    }
+
+    .cursor {
+      display: inline-block;
+      width: 8px;
+      height: 12px;
+      background-color: var(--glow-green);
+      margin-left: 5px;
+      animation: blink 0.8s step-end infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 0.65; }
+      50% { opacity: 1; }
+    }
+
+    @keyframes blink {
+      from, to { background-color: transparent }
+      50% { background-color: var(--glow-green) }
+    }
+  </style>
+</head>
+<body>
+  <div class="crt-overlay"></div>
+  <div class="scanlines"></div>
+
+  <div class="boot-container">
+    <div class="energy-ring"></div>
+    <div class="boot-title">◈ INITIALIZING J.A.R.V.I.S. SYSTEM CORE v3.0.0</div>
+    <div class="boot-status">
+      LOADING NEURAL NETWORK LAYERS & SEMANTIC VECTOR DATABASE FILES...<span class="cursor"></span>
+    </div>
+  </div>
+</body>
+</html>

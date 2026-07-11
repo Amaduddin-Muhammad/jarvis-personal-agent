@@ -1,16 +1,85 @@
 const { app, BrowserWindow, Tray, Menu, globalShortcut, ipcMain, session } = require('electron');
 const path = require('path');
+const { spawn, execSync } = require('child_process');
+const http = require('http');
 
 let mainWindow;
 let tray;
 let isQuitting = false;
 
+// Background process handles
+let aiCoreProcess = null;
+let gatewayProcess = null;
+let frontendProcess = null;
+
+// Start all JARVIS backend services in the background
+function startBackends() {
+  console.log('Starting Python AI Core...');
+  const pythonPath = path.join(__dirname, 'backend-ai-core', '.venv', 'Scripts', 'python.exe');
+  const serverPath = path.join(__dirname, 'backend-ai-core', 'server.py');
+  
+  aiCoreProcess = spawn(pythonPath, [serverPath], {
+    cwd: __dirname,
+    shell: true,
+  });
+
+  aiCoreProcess.stdout.on('data', (data) => console.log(`[AI Core]: ${data}`));
+  aiCoreProcess.stderr.on('data', (data) => console.error(`[AI Core Error]: ${data}`));
+
+  console.log('Starting NestJS Gateway...');
+  gatewayProcess = spawn('npm', ['run', 'start'], {
+    cwd: path.join(__dirname, 'backend-gateway'),
+    shell: true,
+  });
+
+  gatewayProcess.stdout.on('data', (data) => console.log(`[Gateway]: ${data}`));
+  gatewayProcess.stderr.on('data', (data) => console.error(`[Gateway Error]: ${data}`));
+
+  console.log('Starting Next.js Frontend...');
+  frontendProcess = spawn('npm', ['run', 'dev'], {
+    cwd: path.join(__dirname, 'frontend'),
+    shell: true,
+  });
+
+  frontendProcess.stdout.on('data', (data) => console.log(`[Frontend]: ${data}`));
+  frontendProcess.stderr.on('data', (data) => console.error(`[Frontend Error]: ${data}`));
+}
+
+// Kill all spawned background processes and their children on Windows
+function killBackends() {
+  console.log('Stopping background services...');
+  if (aiCoreProcess) {
+    try { execSync(`taskkill /pid ${aiCoreProcess.pid} /T /F`); } catch (e) {}
+  }
+  if (gatewayProcess) {
+    try { execSync(`taskkill /pid ${gatewayProcess.pid} /T /F`); } catch (e) {}
+  }
+  if (frontendProcess) {
+    try { execSync(`taskkill /pid ${frontendProcess.pid} /T /F`); } catch (e) {}
+  }
+}
+
+// Check if Next.js frontend is listening on port 3000
+function checkFrontendReady(callback) {
+  const req = http.get('http://localhost:3000', (res) => {
+    if (res.statusCode === 200) {
+      callback();
+    } else {
+      setTimeout(() => checkFrontendReady(callback), 500);
+    }
+  });
+
+  req.on('error', () => {
+    setTimeout(() => checkFrontendReady(callback), 500);
+  });
+}
+
 function createMainWindow() {
   mainWindow = new BrowserWindow({
-    width: 1000,
-    height: 700,
-    minWidth: 800,
-    minHeight: 600,
+    width: 1100,
+    height: 780,
+    minWidth: 900,
+    minHeight: 650,
     frame: false, // frameless HUD
     transparent: true, // transparent window for cyber glow and depth
     backgroundColor: '#00000000', // fully transparent background
@@ -19,10 +88,21 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false
     },
-    icon: path.join(__dirname, 'src', 'logo.png') // fallback if no logo
+    icon: path.join(__dirname, 'src', 'logo.png')
   });
 
-  mainWindow.loadFile(path.join(__dirname, 'src', 'index.html'));
+  // Load boot visualizer immediately
+  mainWindow.loadFile(path.join(__dirname, 'src', 'boot.html'));
+
+  // Start backends
+  startBackends();
+
+  // Redirect to HUD once front-end server is up
+  checkFrontendReady(() => {
+    if (mainWindow) {
+      mainWindow.loadURL('http://localhost:3000');
+    }
+  });
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -30,7 +110,6 @@ function createMainWindow() {
     return { action: 'deny' };
   });
 
-  // Handle window close by hiding instead (running in background)
   mainWindow.on('close', (event) => {
     if (!isQuitting) {
       event.preventDefault();
@@ -45,11 +124,7 @@ function createMainWindow() {
 }
 
 function createTray() {
-  // Create a simple blank tray icon if no image exists, or a green circle icon
-  // For Windows, we can use a small green dot icon
   const iconPath = path.join(__dirname, 'src', 'tray_icon.png');
-  
-  // Note: If icon doesn't exist, Electron might show empty tray. We'll handle it.
   tray = new Tray(iconPath);
   
   const contextMenu = Menu.buildFromTemplate([
@@ -74,7 +149,6 @@ function createTray() {
   tray.setToolTip('JARVIS Personal AI Agent');
   tray.setContextMenu(contextMenu);
 
-  // Toggle HUD window on tray click
   tray.on('click', () => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
@@ -89,13 +163,13 @@ app.whenReady().then(() => {
   createMainWindow();
   createTray();
 
-  // Auto-approve microphone permission requests for Web Speech API
-  session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
+  // Auto-approve microphone permission requests
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
     if (permission === 'media') return true;
     return false;
   });
 
-  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     if (permission === 'media') {
       callback(true);
       return;
@@ -123,11 +197,11 @@ app.whenReady().then(() => {
 });
 
 app.on('will-quit', () => {
-  // Unregister all shortcuts
   globalShortcut.unregisterAll();
+  killBackends();
 });
 
-// IPC handlers for window control (minimize, maximize, close)
+// IPC handlers for window control
 ipcMain.on('window-minimize', () => {
   if (mainWindow) mainWindow.minimize();
 });
@@ -143,7 +217,7 @@ ipcMain.on('window-maximize', () => {
 });
 
 ipcMain.on('window-close', () => {
-  if (mainWindow) mainWindow.hide(); // Hide to tray instead of closing
+  if (mainWindow) mainWindow.hide();
 });
 
 ipcMain.on('app-quit', () => {
