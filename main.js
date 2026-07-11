@@ -12,12 +12,60 @@ let aiCoreProcess = null;
 let gatewayProcess = null;
 let frontendProcess = null;
 
-// Start all JARVIS backend services in the background
+// ─────────────────────────────────────────────────────────────────
+// PORT CLEANUP — kills ANY process occupying a port on Windows.
+// This handles the EADDRINUSE case when a previous JARVIS session
+// wasn't fully cleaned up before launching again.
+// ─────────────────────────────────────────────────────────────────
+function freePort(port) {
+  try {
+    // netstat finds the PID using the port; taskkill ends it forcefully
+    const result = execSync(
+      `netstat -ano | findstr :${port} | findstr LISTENING`,
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }
+    ).trim();
+
+    if (!result) return;
+
+    // Parse the PID from the last column of each matching line
+    const pids = new Set();
+    result.split('\n').forEach(line => {
+      const parts = line.trim().split(/\s+/);
+      const pid = parts[parts.length - 1];
+      if (pid && /^\d+$/.test(pid) && pid !== '0') {
+        pids.add(pid);
+      }
+    });
+
+    pids.forEach(pid => {
+      try {
+        execSync(`taskkill /pid ${pid} /T /F`, { stdio: 'ignore' });
+        console.log(`[JARVIS] Freed port ${port} — killed PID ${pid}`);
+      } catch (e) {
+        // Process may have already exited — safe to ignore
+      }
+    });
+  } catch (e) {
+    // No process found on port — nothing to do
+  }
+}
+
+// Free all ports JARVIS services use
+function freeAllPorts() {
+  console.log('[JARVIS] Cleaning up ports 3000, 3001, 8000...');
+  freePort(3000); // NestJS Gateway
+  freePort(3001); // Next.js Frontend
+  freePort(8000); // Python AI Core
+}
+
+// ─────────────────────────────────────────────────────────────────
+// BACKEND STARTUP
+// ─────────────────────────────────────────────────────────────────
 function startBackends() {
-  console.log('Starting Python AI Core...');
+  console.log('[JARVIS] Starting Python AI Core...');
   const pythonPath = path.join(__dirname, 'backend-ai-core', '.venv', 'Scripts', 'python.exe');
   const serverPath = path.join(__dirname, 'backend-ai-core', 'server.py');
-  
+
   aiCoreProcess = spawn(pythonPath, [serverPath], {
     cwd: __dirname,
     shell: true,
@@ -26,7 +74,7 @@ function startBackends() {
   aiCoreProcess.stdout.on('data', (data) => console.log(`[AI Core]: ${data}`));
   aiCoreProcess.stderr.on('data', (data) => console.error(`[AI Core Error]: ${data}`));
 
-  console.log('Starting NestJS Gateway...');
+  console.log('[JARVIS] Starting NestJS Gateway...');
   gatewayProcess = spawn('npm', ['run', 'start'], {
     cwd: path.join(__dirname, 'backend-gateway'),
     shell: true,
@@ -35,7 +83,7 @@ function startBackends() {
   gatewayProcess.stdout.on('data', (data) => console.log(`[Gateway]: ${data}`));
   gatewayProcess.stderr.on('data', (data) => console.error(`[Gateway Error]: ${data}`));
 
-  console.log('Starting Next.js Frontend...');
+  console.log('[JARVIS] Starting Next.js Frontend...');
   frontendProcess = spawn('npm', ['run', 'dev'], {
     cwd: path.join(__dirname, 'frontend'),
     shell: true,
@@ -45,21 +93,29 @@ function startBackends() {
   frontendProcess.stderr.on('data', (data) => console.error(`[Frontend Error]: ${data}`));
 }
 
-// Kill all spawned background processes and their children on Windows
+// ─────────────────────────────────────────────────────────────────
+// BACKEND SHUTDOWN — kills tracked PIDs AND re-frees ports
+// ─────────────────────────────────────────────────────────────────
 function killBackends() {
-  console.log('Stopping background services...');
-  if (aiCoreProcess) {
-    try { execSync(`taskkill /pid ${aiCoreProcess.pid} /T /F`); } catch (e) {}
-  }
-  if (gatewayProcess) {
-    try { execSync(`taskkill /pid ${gatewayProcess.pid} /T /F`); } catch (e) {}
-  }
-  if (frontendProcess) {
-    try { execSync(`taskkill /pid ${frontendProcess.pid} /T /F`); } catch (e) {}
-  }
+  console.log('[JARVIS] Stopping background services...');
+
+  const kill = (proc, label) => {
+    if (!proc) return;
+    try { execSync(`taskkill /pid ${proc.pid} /T /F`, { stdio: 'ignore' }); } catch (e) {}
+    console.log(`[JARVIS] ${label} stopped.`);
+  };
+
+  kill(aiCoreProcess, 'AI Core');
+  kill(gatewayProcess, 'Gateway');
+  kill(frontendProcess, 'Frontend');
+
+  // Belt-and-suspenders: also free ports in case child processes survived
+  freeAllPorts();
 }
 
-// Check if Next.js frontend is listening on port 3001
+// ─────────────────────────────────────────────────────────────────
+// FRONTEND READINESS POLL
+// ─────────────────────────────────────────────────────────────────
 function checkFrontendReady(callback) {
   const req = http.get('http://localhost:3001', (res) => {
     if (res.statusCode === 200) {
@@ -74,30 +130,34 @@ function checkFrontendReady(callback) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────
+// WINDOW CREATION
+// ─────────────────────────────────────────────────────────────────
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1100,
     height: 780,
     minWidth: 900,
     minHeight: 650,
-    frame: false, // frameless HUD
-    transparent: true, // transparent window for cyber glow and depth
-    backgroundColor: '#00000000', // fully transparent background
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
     },
-    icon: path.join(__dirname, 'src', 'logo.ico')
+    icon: path.join(__dirname, 'src', 'logo.ico'),
   });
 
-  // Load boot visualizer immediately
+  // Load boot screen immediately
   mainWindow.loadFile(path.join(__dirname, 'src', 'boot.html'));
 
-  // Start backends
+  // Free lingering ports FIRST, then start backends
+  freeAllPorts();
   startBackends();
 
-  // Redirect to HUD once front-end server is up
+  // Navigate to HUD once Next.js is ready
   checkFrontendReady(() => {
     if (mainWindow) {
       mainWindow.loadURL('http://localhost:3001');
@@ -123,18 +183,21 @@ function createMainWindow() {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────
+// TRAY SETUP
+// ─────────────────────────────────────────────────────────────────
 function createTray() {
   const iconPath = path.join(__dirname, 'src', 'tray_icon.png');
   tray = new Tray(iconPath);
-  
+
   const contextMenu = Menu.buildFromTemplate([
     {
       label: 'Show HUD',
-      click: () => mainWindow.show()
+      click: () => mainWindow && mainWindow.show(),
     },
     {
       label: 'Minimize to Tray',
-      click: () => mainWindow.hide()
+      click: () => mainWindow && mainWindow.hide(),
     },
     { type: 'separator' },
     {
@@ -142,14 +205,15 @@ function createTray() {
       click: () => {
         isQuitting = true;
         app.quit();
-      }
-    }
+      },
+    },
   ]);
 
   tray.setToolTip('JARVIS Personal AI Agent');
   tray.setContextMenu(contextMenu);
 
   tray.on('click', () => {
+    if (!mainWindow) return;
     if (mainWindow.isVisible()) {
       mainWindow.hide();
     } else {
@@ -159,6 +223,9 @@ function createTray() {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────
+// APP LIFECYCLE
+// ─────────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   createMainWindow();
   createTray();
@@ -177,15 +244,14 @@ app.whenReady().then(() => {
     callback(false);
   });
 
-  // Register Alt+Space shortcut to toggle HUD
+  // Alt+Space — toggle HUD visibility
   globalShortcut.register('Alt+Space', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-      }
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
     }
   });
 
@@ -201,7 +267,9 @@ app.on('will-quit', () => {
   killBackends();
 });
 
-// IPC handlers for window control
+// ─────────────────────────────────────────────────────────────────
+// IPC HANDLERS — window chrome controls
+// ─────────────────────────────────────────────────────────────────
 ipcMain.on('window-minimize', () => {
   if (mainWindow) mainWindow.minimize();
 });
