@@ -1,145 +1,519 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* JARVIS OS DESIGN SYSTEM VARIABLES */
+/* ====================================================
+   JARVIS — INSTRUMENT PANEL DESIGN SYSTEM
+   ==================================================== */
+
 :root {
-  --bg-deep: #05070f;
-  --bg-panel: rgba(11, 18, 32, 0.65);
-  --border-cyan: rgba(58, 214, 255, 0.25);
-  --border-green: rgba(51, 255, 153, 0.25);
-  --border-orange: rgba(255, 184, 77, 0.25);
-  
-  --glow-cyan: #3ad6ff;
-  --glow-green: #33ff99;
-  --glow-purple: #9b51e0;
-  --glow-orange: #ffb84d;
-  
-  --color-success: #33ff99;
-  --color-danger: #ff4d4d;
-  --color-warning: #ffb84d;
-  
-  --text-primary: #ffffff;
-  --text-dim: #8b9fb4;
-  --text-cyan: #3ad6ff;
-  --text-green: #33ff99;
-  --text-orange: #ffb84d;
+  /* Backgrounds */
+  --bg-0: #120F16;
+  --bg-1: #1B1721;
+  --bg-2: #241E2C;
+
+  /* Borders */
+  --hairline: #38313F;
+
+  /* Accent: primary — active / listening */
+  --amber-50:  #FBE9D6;
+  --amber-400: #D98F4A;
+  --amber-600: #B8712F;
+
+  /* Accent: secondary — passive stats */
+  --glacier-400: #6FA8C9;
+  --glacier-600: #4C7E9C;
+
+  /* Alerts */
+  --red-400: #C1503F;
+
+  /* Text */
+  --text-hi:  #F3EEE6;
+  --text-mid: #A79EAE;
+  --text-low: #6F6678;
+
+  /* Typography */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Fira Code', monospace;
+}
+
+/* ====================================================
+   BASE RESET
+   ==================================================== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 body {
-  background-color: var(--bg-deep);
-  color: var(--text-primary);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  overflow: hidden;
-  height: 100vh;
-  width: 100vw;
+  background-color: var(--bg-0);
+  color: var(--text-hi);
+  font-family: var(--font-display);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* CRT EFFECTS */
-.crt-overlay {
+/* ====================================================
+   UTILITY CLASSES
+   ==================================================== */
+.font-display { font-family: var(--font-display); }
+.font-mono    { font-family: var(--font-mono); }
+
+.text-hi  { color: var(--text-hi); }
+.text-mid { color: var(--text-mid); }
+.text-low { color: var(--text-low); }
+
+.text-amber   { color: var(--amber-400); }
+.text-glacier { color: var(--glacier-400); }
+.text-red     { color: var(--red-400); }
+
+.bg-0 { background-color: var(--bg-0); }
+.bg-1 { background-color: var(--bg-1); }
+.bg-2 { background-color: var(--bg-2); }
+
+.border-hairline { border-color: var(--hairline); }
+
+/* ====================================================
+   SCROLLBAR (hidden but functional)
+   ==================================================== */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-1); }
+::-webkit-scrollbar-thumb { background: var(--hairline); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-low); }
+
+/* ====================================================
+   PANEL LABEL
+   ==================================================== */
+.panel-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--text-low);
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+/* ====================================================
+   CHIP (Quick action button)
+   ==================================================== */
+.chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mid);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  white-space: nowrap;
+  outline: none;
+  letter-spacing: 0.02em;
+}
+.chip:hover {
+  border-color: var(--amber-600);
+  color: var(--amber-50);
+  background: rgba(217, 143, 74, 0.06);
+}
+.chip:active {
+  background: rgba(217, 143, 74, 0.12);
+}
+
+/* ====================================================
+   KEYFRAMES
+   ==================================================== */
+
+/* Breathing — idle iris */
+@keyframes iris-breathe {
+  0%, 100% { opacity: 0.45; }
+  50%       { opacity: 0.75; }
+}
+
+/* Rotation — thinking iris */
+@keyframes iris-rotate {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Slide-in confirmation strip */
+@keyframes confirm-slide-in {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* Red pulse — error state */
+@keyframes red-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(193, 80, 63, 0.6); }
+  70%  { box-shadow: 0 0 0 12px rgba(193, 80, 63, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(193, 80, 63, 0); }
+}
+
+/* Dot pulse — active indicator */
+@keyframes dot-pulse {
+  0%, 100% { box-shadow: 0 0 4px var(--amber-400); opacity: 1; }
+  50%       { box-shadow: 0 0 10px var(--amber-400); opacity: 0.7; }
+}
+
+/* ====================================================
+   IRIS GAUGE STATES
+   ==================================================== */
+.iris-idle .iris-bars {
+  animation: iris-breathe 3.5s ease-in-out infinite;
+}
+
+.iris-thinking .iris-bars-group {
+  animation: iris-rotate 4s linear infinite;
+  transform-origin: 110px 110px;
+}
+
+.iris-error .iris-center {
+  animation: red-pulse 0.8s ease-out 2;
+}
+
+/* Reduced motion overrides */
+@media (prefers-reduced-motion: reduce) {
+  .iris-idle .iris-bars,
+  .iris-thinking .iris-bars-group {
+    animation: none;
+    opacity: 0.6;
+  }
+  .iris-error .iris-center {
+    animation: none;
+    stroke: var(--red-400);
+  }
+}
+
+/* ====================================================
+   CONFIRMATION STRIP
+   ==================================================== */
+.confirm-strip {
+  animation: confirm-slide-in 0.2s ease-out;
+  border: 1px solid var(--red-400);
+  border-radius: 3px;
+  background: rgba(193, 80, 63, 0.08);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.confirm-strip button {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.confirm-strip button.confirm-yes {
+  color: var(--amber-50);
+  border-color: var(--red-400);
+}
+.confirm-strip button.confirm-yes:hover {
+  background: rgba(193, 80, 63, 0.18);
+}
+.confirm-strip button.confirm-no {
+  color: var(--text-mid);
+  border-color: var(--hairline);
+}
+.confirm-strip button.confirm-no:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+/* ====================================================
+   ACTIVITY LOG
+   ==================================================== */
+.log-item {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.log-item:last-child { border-bottom: none; }
+.log-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-low);
+  display: block;
+  margin-bottom: 2px;
+}
+.log-text {
+  font-size: 13px;
+  color: var(--text-hi);
+  line-height: 1.4;
+}
+
+/* ====================================================
+   CHAT MESSAGE THREAD (retained below HUD)
+   ==================================================== */
+.chat-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 82%;
+}
+.chat-msg.owner { align-self: flex-end; }
+.chat-msg.jarvis { align-self: flex-start; }
+
+.chat-msg .sender-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-low);
+  letter-spacing: 0.1em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.chat-msg.owner .sender-label { text-align: right; color: var(--amber-600); }
+.chat-msg.jarvis .sender-label { color: var(--glacier-600); }
+
+.chat-bubble {
+  padding: 10px 14px;
+  border-radius: 3px;
+  font-size: 14px;
+  line-height: 1.6;
+  border: 1px solid var(--hairline);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.chat-msg.owner .chat-bubble {
+  background: rgba(217, 143, 74, 0.06);
+  border-color: rgba(217, 143, 74, 0.2);
+  color: var(--amber-50);
+}
+.chat-msg.jarvis .chat-bubble {
+  background: var(--bg-2);
+  color: var(--text-hi);
+}
+
+/* Code blocks inside chat */
+.chat-bubble code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  padding: 2px 5px;
+  color: var(--glacier-400);
+}
+.chat-bubble pre {
+  background: var(--bg-0);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--glacier-400);
+  margin: 6px 0 0;
+}
+
+/* Embedded images in chat */
+.chat-image {
+  max-width: 100%;
+  border: 1px solid var(--amber-600);
+  border-radius: 3px;
+  margin-top: 8px;
+}
+
+/* ====================================================
+   INPUT BAR
+   ==================================================== */
+.input-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid var(--hairline);
+  background: var(--bg-1);
+  flex-shrink: 0;
+}
+.input-bar input {
+  flex: 1;
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-hi);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input-bar input::placeholder { color: var(--text-low); }
+.input-bar input:focus { border-color: var(--amber-600); }
+
+.input-bar button {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 7px 10px;
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+}
+.input-bar button:hover { border-color: var(--amber-600); color: var(--amber-400); }
+.input-bar button.active { border-color: var(--amber-400); color: var(--amber-400); }
+.input-bar button.muted { border-color: var(--red-400); color: var(--red-400); }
+
+/* ====================================================
+   STATUS BAR DOT
+   ==================================================== */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber-400);
+  animation: dot-pulse 2.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+/* ====================================================
+   SYSTEM GAUGE ROW
+   ==================================================== */
+.gauge-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mid);
+  line-height: 1.3;
+}
+.gauge-val {
+  font-size: 15px;
+  color: var(--text-hi);
+  font-weight: 500;
+  display: block;
+  margin-bottom: 1px;
+}
+
+/* ====================================================
+   SYSTEM LIST
+   ==================================================== */
+.sys-list {
+  list-style: none;
+  padding: 0;
+  margin: 20px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-mid);
+}
+.sys-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.sys-list li:last-child { border-bottom: none; }
+.sys-list li span:last-child { color: var(--text-hi); }
+
+/* ====================================================
+   VOICE STATE LABEL
+   ==================================================== */
+.voice-state-label {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 20px;
+  transition: color 0.3s ease;
+}
+.voice-state-label.idle     { color: var(--glacier-400); }
+.voice-state-label.listening{ color: var(--amber-400); }
+.voice-state-label.thinking { color: rgba(217, 143, 74, 0.55); }
+.voice-state-label.confirming{ color: var(--red-400); }
+.voice-state-label.speaking { color: var(--amber-400); }
+.voice-state-label.error    { color: var(--red-400); }
+
+.voice-transcript {
+  font-size: 14px;
+  color: var(--text-mid);
+  text-align: center;
+  max-width: 300px;
+  min-height: 20px;
+  margin-top: 8px;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+/* ====================================================
+   SETTINGS MODAL OVERLAY
+   ==================================================== */
+.settings-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle, rgba(16, 32, 24, 0) 50%, rgba(0, 0, 0, 0.5) 100%);
-  z-index: 9999;
-  pointer-events: none;
+  inset: 0;
+  background: rgba(18, 15, 22, 0.85);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-
-.scanlines {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(
-    rgba(18, 16, 16, 0) 50%, 
-    rgba(0, 0, 0, 0.2) 50%
-  );
-  background-size: 100% 4px;
-  z-index: 9998;
-  pointer-events: none;
-  opacity: 0.7;
-}
-
-/* GLASSMORPHISM UTILITIES */
-.glass-panel {
-  background: var(--bg-panel);
-  backdrop-filter: blur(25px) saturate(180%);
-  -webkit-backdrop-filter: blur(25px) saturate(180%);
-  border: 1px solid var(--border-cyan);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.glass-panel:hover {
-  border-color: rgba(58, 214, 255, 0.5);
-  box-shadow: 0 8px 36px 0 rgba(58, 214, 255, 0.12);
-}
-
-.glass-panel-green {
-  border-color: var(--border-green);
-  box-shadow: 0 0 15px rgba(51, 255, 153, 0.1);
-}
-
-.glass-panel-green:hover {
-  border-color: rgba(51, 255, 153, 0.55);
-}
-
-.glass-panel-orange {
-  border-color: var(--border-orange);
-  box-shadow: 0 0 15px rgba(255, 184, 77, 0.1);
-}
-
-.glass-panel-orange:hover {
-  border-color: rgba(255, 184, 77, 0.55);
-}
-
-/* TEXT SELECTION OVERRIDES */
-.selectable-text {
-  user-select: text !important;
-  -webkit-user-select: text !important;
-}
-
-/* CUSTOM SCROLLBARS */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(11, 18, 32, 0.1);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border-cyan);
+.settings-modal {
+  background: var(--bg-1);
+  border: 1px solid var(--hairline);
   border-radius: 4px;
+  width: 480px;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 24px;
 }
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--glow-cyan);
+.settings-modal h2 {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: var(--text-low);
+  text-transform: uppercase;
+  margin: 0 0 20px;
 }
-
-/* PULSING EFFECTS */
-@keyframes pulse-cyan {
-  0%, 100% { border-color: rgba(58, 214, 255, 0.35); background: rgba(58, 214, 255, 0.05); }
-  50%       { border-color: rgba(58, 214, 255, 0.8); background: rgba(58, 214, 255, 0.12); }
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 16px;
 }
-
-.interim-pulse {
-  animation: pulse-cyan 1.4s ease-in-out infinite;
+.settings-row label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-low);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
-
-/* TYPEWRITER CURSOR */
-.typewriter-cursor::after {
-  content: '▋';
-  color: var(--glow-green);
-  animation: blink 0.9s step-end infinite;
+.settings-row input[type="range"],
+.settings-row select {
+  background: var(--bg-2);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  color: var(--text-hi);
+  padding: 5px 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  width: 100%;
 }
-
-@keyframes blink {
-  from, to { opacity: 0 }
-  50% { opacity: 1 }
+.settings-row input[type="range"] {
+  padding: 0;
+  height: 4px;
+  accent-color: var(--amber-400);
+  cursor: pointer;
 }
