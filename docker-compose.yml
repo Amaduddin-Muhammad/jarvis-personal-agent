@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # 1. Relational Database Store
+  postgres:
+    image: postgres:15-alpine
+    container_name: jarvis_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: jarvis_admin
+      POSTGRES_PASSWORD: secure_database_pass_998
+      POSTGRES_DB: jarvis_metadata
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 2. Redis Session Cache & VAD Buffer
+  redis:
+    image: redis:7-alpine
+    container_name: jarvis_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # 3. NestJS Orchestration & Integrations Gateway
+  backend-gateway:
+    build:
+      context: ./backend-gateway
+      dockerfile: Dockerfile
+    container_name: jarvis_gateway
+    restart: always
+    environment:
+      - PORT=3000
+      - DATABASE_URL=postgresql://jarvis_admin:secure_database_pass_998@postgres:5432/jarvis_metadata?schema=public
+      - REDIS_URL=redis://redis:6379
+      - AI_CORE_URL=ws://backend-ai-core:8000/ws
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+      - redis
+
+  # 4. Python FastAPI Multimodal AI Agent Core
+  backend-ai-core:
+    build:
+      context: ./backend-ai-core
+      dockerfile: Dockerfile
+    container_name: jarvis_ai_core
+    restart: always
+    environment:
+      - PORT=8000
+      - NVIDIA_API_KEY=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
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./output:/app/output
+
+  # 5. Spatial Next.js HUD Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: jarvis_frontend
+    restart: always
+    ports:
+      - "80:3000"
+    depends_on:
+      - backend-gateway
+      - backend-ai-core
+
+volumes:
+  pgdata:
