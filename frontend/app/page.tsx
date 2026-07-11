@@ -73,6 +73,7 @@ export default function JarvisDashboard() {
   const socketRef = useRef<Socket | null>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
   const logsBottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   
   // Speech Core References
   const recognitionRef = useRef<any>(null);
@@ -171,6 +172,42 @@ export default function JarvisDashboard() {
   useEffect(() => {
     logsBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [systemLogs]);
+
+  // Usability Engineering: Keyboard Shortcuts & Auto-Focus
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Ctrl+L -> Clear chat logs
+      if (e.ctrlKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        setChatMessages([]);
+        addLog('SYS', 'Chat logs cleared via hotkey.');
+      }
+      
+      // 2. Ctrl+, -> Toggle settings panel
+      if (e.ctrlKey && e.key === ',') {
+        e.preventDefault();
+        setIsSettingsOpen(prev => !prev);
+      }
+
+      // 3. Escape -> Close settings panel
+      if (e.key === 'Escape') {
+        setIsSettingsOpen(false);
+        setConfirmGate(null);
+      }
+
+      // 4. Any alphanumeric key press -> Auto-focus chat input if not typing elsewhere
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT' || activeEl.tagName === 'TEXTAREA');
+      if (!isInputFocused && !e.ctrlKey && !e.altKey && !e.metaKey && e.key.length === 1) {
+        inputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   // ==========================================
   // HELPERS
@@ -657,12 +694,14 @@ export default function JarvisDashboard() {
         {/* Input box */}
         <div className="flex gap-2 items-center bg-[rgba(11,18,32,0.4)] border border-[rgba(58,214,255,0.15)] rounded-lg p-1.5">
           <input 
+            ref={inputRef}
             type="text"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendText()}
             placeholder="Instruct J.A.R.V.I.S..."
             className="flex-1 bg-transparent outline-none border-none font-mono text-sm px-2 text-[#ffffff] placeholder-[#3d4a45]"
+            autoFocus
           />
           <button 
             onClick={toggleMute}

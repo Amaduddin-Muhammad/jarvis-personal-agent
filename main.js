@@ -88,7 +88,7 @@ function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false
     },
-    icon: path.join(__dirname, 'src', 'logo.png')
+    icon: path.join(__dirname, 'src', 'logo.ico')
   });
 
   // Load boot visualizer immediately

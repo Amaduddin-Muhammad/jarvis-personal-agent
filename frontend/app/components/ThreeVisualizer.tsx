@@ -134,11 +134,10 @@ export default function ThreeVisualizer({ agentState, volumeLevel }: ThreeVisual
     }
 
     // 4. Animation Frame Loop (physics-based morphing)
-    let clock = new THREE.Clock();
     let animationId = 0;
 
     const animate = () => {
-      const elapsedTime = clock.getElapsedTime();
+      const elapsedTime = performance.now() * 0.001;
       const currentState = stateRef.current;
       const vol = volumeRef.current;
 
