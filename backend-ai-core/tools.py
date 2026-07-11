@@ -10,8 +10,8 @@ import urllib.request
 import urllib.parse
 import html
 import re
-from backend.image_gen import generate_image as _generate_image
-from backend.docx_gen import create_word_document as _create_word_document
+from image_gen import generate_image as _generate_image
+from docx_gen import create_word_document as _create_word_document
 
 
 # Fallback for clipboard because pywin32 might not be fully configured or needs compilation.

@@ -59,9 +59,9 @@ function killBackends() {
   }
 }
 
-// Check if Next.js frontend is listening on port 3000
+// Check if Next.js frontend is listening on port 3001
 function checkFrontendReady(callback) {
-  const req = http.get('http://localhost:3000', (res) => {
+  const req = http.get('http://localhost:3001', (res) => {
     if (res.statusCode === 200) {
       callback();
     } else {
@@ -100,7 +100,7 @@ function createMainWindow() {
   // Redirect to HUD once front-end server is up
   checkFrontendReady(() => {
     if (mainWindow) {
-      mainWindow.loadURL('http://localhost:3000');
+      mainWindow.loadURL('http://localhost:3001');
     }
   });
 

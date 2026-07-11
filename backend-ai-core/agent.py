@@ -3,7 +3,7 @@ import json
 import re
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-from backend.tools import TOOLS_REGISTRY, execute_tool_by_name
+from tools import TOOLS_REGISTRY, execute_tool_by_name
 
 SYSTEM_PROMPT = """You are JARVIS, a world-class personal AI agent running on the owner's Windows laptop. You are highly sophisticated, proactive, and operate like the best AI assistant ever built — a true best friend who anticipates needs, solves complex problems, and acts with precision.
 
