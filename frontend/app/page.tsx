@@ -146,8 +146,16 @@ export default function JarvisDashboard() {
     });
 
     // Listen for vitals metrics from Python core stats
-    socket.on('vitals', (data: Vitals) => {
-      setVitals(data);
+    socket.on('vitals', (payload: any) => {
+      if (payload && payload.data) {
+        setVitals({
+          cpu: payload.data.cpu || 0,
+          ram: payload.data.ram || 0,
+          battery: payload.data.battery || 0,
+          netUp: payload.data.network ? payload.data.network.sent_mb : 0,
+          netDown: payload.data.network ? payload.data.network.recv_kb : 0,
+        });
+      }
     });
 
     return () => {
