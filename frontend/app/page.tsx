@@ -101,6 +101,7 @@ export default function JarvisDashboard() {
   const currentLangRef = useRef(currentLang);
   const voiceSpeedRef = useRef(voiceSpeed);
   const voicePitchRef = useRef(voicePitch);
+  const shouldRestartRef = useRef(true);
 
   // Keep refs in sync
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
@@ -298,6 +299,9 @@ export default function JarvisDashboard() {
     const SpeechClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechClass) return;
 
+    // Reset restart flag on fresh launch
+    shouldRestartRef.current = true;
+
     const rec = new SpeechClass();
     rec.continuous = true;
     rec.interimResults = true;
@@ -328,7 +332,7 @@ export default function JarvisDashboard() {
 
     rec.onend = () => {
       recognitionRunningRef.current = false;
-      if (!isMutedRef.current && !isMicDuckedRef.current) {
+      if (shouldRestartRef.current && !isMutedRef.current && !isMicDuckedRef.current) {
         setTimeout(() => startRecognitionRef.current(), 300);
       }
     };
@@ -336,8 +340,13 @@ export default function JarvisDashboard() {
     rec.onerror = (e: any) => {
       recognitionRunningRef.current = false;
       console.error('Speech recognition error:', e.error);
+      
       if (e.error === 'not-allowed') {
-        pushActivity('Microphone access denied. Please allow microphone permissions in Windows settings.', 'ERROR');
+        shouldRestartRef.current = false;
+        pushActivity('Microphone access denied. Please verify recording permissions in Windows settings.', 'ERROR');
+      } else if (e.error === 'network') {
+        shouldRestartRef.current = false;
+        pushActivity('Speech Recognition network error. Google Speech servers are unreachable from Electron. Voice control disabled.', 'ERROR');
       } else if (e.error === 'no-speech') {
         // Safe timeout, ignore
       } else {
@@ -362,6 +371,7 @@ export default function JarvisDashboard() {
       pushActivity('Voice control offline — mic muted.', 'SYS');
     } else {
       isMicDuckedRef.current = false;
+      shouldRestartRef.current = true; // Reset error flag on manual unmute
       pushActivity('Voice control online — listening.', 'SYS');
       setTimeout(() => startRecognitionRef.current(), 200);
     }
