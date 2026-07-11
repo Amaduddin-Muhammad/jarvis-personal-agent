@@ -30,13 +30,12 @@ export default function StatusBar({ voiceState }: StatusBarProps) {
   const [time, setTime] = useState('');
   const [battery, setBattery] = useState<number | null>(null);
   const [charging, setCharging] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // Lazy state initializer to avoid calling setState synchronously inside useEffect
-  const [isElectron] = useState(() => {
-    return typeof window !== 'undefined' && !!(window as unknown as ElectronWindow).electronAPI;
-  });
+  const isElectron = mounted && typeof window !== 'undefined' && !!(window as unknown as ElectronWindow).electronAPI;
 
   useEffect(() => {
+    setMounted(true);
     const tick = () => {
       const d = new Date();
       setTime(d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }));

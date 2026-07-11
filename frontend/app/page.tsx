@@ -111,14 +111,7 @@ export default function JarvisDashboard() {
   const [vitals, setVitals] = useState<Vitals>({ cpu: 12, ram: 45, battery: 100, netUp: 0.1, netDown: 1.2 });
 
   // Chat + activity
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      sender: 'JARVIS',
-      text: 'Systems online. All diagnostic checks completed. J.A.R.V.I.S. is ready to assist you. Ask me anything or say "Jarvis" to voice control.',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }),
-    }
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
 
   // Input / mic
@@ -537,6 +530,9 @@ export default function JarvisDashboard() {
 
   // Auto-start voice recognition on mount & verify microphone permission
   useEffect(() => {
+    // Add welcome message only on client mount
+    addMessage('JARVIS', 'Systems online. All diagnostic checks completed. J.A.R.V.I.S. is ready to assist you. Ask me anything or say "Jarvis" to voice control.');
+
     if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then((stream) => {
@@ -550,7 +546,7 @@ export default function JarvisDashboard() {
     }
     const id = setTimeout(() => startRecognitionRef.current(), 800);
     return () => clearTimeout(id);
-  }, [pushActivity]);
+  }, [pushActivity, addMessage]);
 
   // Auto-scroll chat
   useEffect(() => {
