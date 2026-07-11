@@ -243,10 +243,6 @@ export default function JarvisDashboard() {
     setAmplitude(0);
   }, []);
 
-  const duckMic = useCallback((duck: boolean) => {
-    isMicDuckedRef.current = duck;
-  }, []);
-
   const stopRecognition = useCallback(() => {
     if (recognitionRef.current) {
       try { recognitionRef.current.abort(); } catch { /**/ }
@@ -254,6 +250,15 @@ export default function JarvisDashboard() {
     }
     recognitionRunningRef.current = false;
   }, []);
+
+  const duckMic = useCallback((duck: boolean) => {
+    isMicDuckedRef.current = duck;
+    if (duck) {
+      stopRecognition();
+    } else {
+      setTimeout(() => startRecognitionRef.current(), 100);
+    }
+  }, [stopRecognition]);
 
   // Forward declarations so startRecognition can call itself
   const startRecognitionRef = useRef<() => void>(() => {});
