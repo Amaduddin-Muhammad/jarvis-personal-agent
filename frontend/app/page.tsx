@@ -390,7 +390,7 @@ export default function JarvisDashboard() {
 
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
       recognitionRunningRef.current = false;
-      console.error('Speech recognition error:', e.error);
+      console.log('Speech recognition debug log:', e.error);
       
       if (e.error === 'not-allowed') {
         shouldRestartRef.current = false;
@@ -544,7 +544,7 @@ export default function JarvisDashboard() {
           stream.getTracks().forEach(track => track.stop());
         })
         .catch((err) => {
-          console.error('Microphone hardware check failed:', err);
+          console.log('Microphone hardware check log:', err);
           pushActivity(`Microphone Initialization Error: ${err.name || 'AccessDenied'}. Please verify recording devices are enabled in Windows settings.`, 'ERROR');
         });
     }
